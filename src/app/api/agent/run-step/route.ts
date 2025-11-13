@@ -12,6 +12,14 @@ type RunStepRequestBody = {
   promptTemplateOverride?: string;
 };
 
+type ParsedRunStepRequestBody = {
+  stepId: StepId;
+  model: ModelId;
+  topic: string;
+  variables: Record<string, string>;
+  promptTemplateOverride?: string;
+};
+
 const MODEL_IDS: ModelId[] = ['gpt5-thinking', 'kimik2-thinking'];
 const STEP_IDS: StepId[] = [
   'keyConcepts',
@@ -54,7 +62,7 @@ function normalizeVariables(
   return normalized;
 }
 
-function parseRequestBody(body: unknown): RunStepRequestBody | { error: string } {
+function parseRequestBody(body: unknown): ParsedRunStepRequestBody | { error: string } {
   if (typeof body !== 'object' || body === null) {
     return { error: 'Invalid JSON body.' };
   }
@@ -96,7 +104,7 @@ function parseRequestBody(body: unknown): RunStepRequestBody | { error: string }
     stepId,
     model,
     topic,
-    variables: normalizedVariables ?? {},
+    variables: normalizedVariables ?? ({} as Record<string, string>),
     promptTemplateOverride,
   };
 }

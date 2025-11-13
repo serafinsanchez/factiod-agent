@@ -123,7 +123,7 @@ function applyProducedVariables(
 
     const field = VARIABLE_TO_PIPELINE_FIELD[key as VariableKey];
     if (field) {
-      (pipeline as Record<string, unknown>)[field] = value;
+      (pipeline as unknown as Record<string, unknown>)[field] = value;
     }
   }
 }
