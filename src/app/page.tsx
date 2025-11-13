@@ -110,6 +110,7 @@ type PipelineStringField =
   | "hookScript"
   | "quizInfo"
   | "videoScript"
+  | "narrationScript"
   | "title"
   | "description"
   | "thumbnailPrompt";
@@ -121,6 +122,7 @@ const PRODUCED_VARIABLE_TO_PIPELINE_FIELD: Partial<
   HookScript: "hookScript",
   QuizInfo: "quizInfo",
   VideoScript: "videoScript",
+  NarrationScript: "narrationScript",
   Title: "title",
   Description: "description",
   ThumbnailPrompt: "thumbnailPrompt",
@@ -141,6 +143,8 @@ function getPipelineValueForVariable(
       return pipeline.quizInfo;
     case "VideoScript":
       return pipeline.videoScript;
+    case "NarrationScript":
+      return pipeline.narrationScript;
     case "Title":
       return pipeline.title;
     case "Description":
@@ -169,12 +173,15 @@ function isPipelineState(value: unknown): value is PipelineState {
 
 export default function HomePage() {
   const [pipeline, setPipeline] = useState<PipelineState>(
-    () => loadInitialPipeline(),
+    () => createInitialPipeline(),
   );
   const [promptOverrides, setPromptOverrides] = useState<
     Record<StepId, string | undefined>
   >(() => ({} as Record<StepId, string | undefined>));
   const [isRunningAll, setIsRunningAll] = useState(false);
+  const [isGeneratingScriptAudio, setIsGeneratingScriptAudio] = useState(false);
+  const [scriptAudioUrl, setScriptAudioUrl] = useState<string | null>(null);
+  const [scriptAudioError, setScriptAudioError] = useState<string | null>(null);
 
   const sharedVars = useMemo(
     () => ({
@@ -183,12 +190,19 @@ export default function HomePage() {
       hookScript: pipeline.hookScript,
       quizInfo: pipeline.quizInfo,
       videoScript: pipeline.videoScript,
+      narrationScript: pipeline.narrationScript,
       title: pipeline.title,
       description: pipeline.description,
       thumbnailPrompt: pipeline.thumbnailPrompt,
     }),
     [pipeline],
   );
+
+  // Load from localStorage after mount (client-only) to avoid hydration mismatch
+  useEffect(() => {
+    const loaded = loadInitialPipeline();
+    setPipeline(loaded);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -205,6 +219,25 @@ export default function HomePage() {
     }
   }, [pipeline]);
 
+  useEffect(() => {
+    setScriptAudioError(null);
+    setScriptAudioUrl((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev);
+        return null;
+      }
+      return prev;
+    });
+  }, [pipeline.videoScript, pipeline.narrationScript]);
+
+  useEffect(() => {
+    return () => {
+      if (scriptAudioUrl) {
+        URL.revokeObjectURL(scriptAudioUrl);
+      }
+    };
+  }, [scriptAudioUrl]);
+
   const hasAnyOutputs =
     Boolean(pipeline.keyConcepts?.trim()) ||
     Boolean(pipeline.hookScript?.trim()) ||
@@ -214,6 +247,68 @@ export default function HomePage() {
     Boolean(pipeline.thumbnailPrompt?.trim());
 
   const hasScript = Boolean(pipeline.videoScript?.trim());
+
+  const handleGenerateScriptAudio = async () => {
+    // Use narrationScript if available, otherwise fall back to videoScript
+    const script = pipeline.narrationScript?.trim() || pipeline.videoScript?.trim();
+    if (!script) {
+      return;
+    }
+
+    setIsGeneratingScriptAudio(true);
+    setScriptAudioError(null);
+    setScriptAudioUrl((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev);
+      }
+      return null;
+    });
+
+    try {
+      const response = await fetch("/api/tts/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: script }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let message = `Failed to generate audio (status ${response.status}).`;
+
+        if (errorText) {
+          try {
+            const parsed = JSON.parse(errorText);
+            const details =
+              (typeof parsed?.details === "string" && parsed.details) ||
+              (typeof parsed?.error === "string" && parsed.error);
+            if (typeof details === "string" && details.trim().length > 0) {
+              message = details;
+            } else {
+              message = errorText;
+            }
+          } catch {
+            message = errorText;
+          }
+        }
+
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      setScriptAudioUrl(objectUrl);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to generate audio. Please try again.";
+      setScriptAudioError(message);
+    } finally {
+      setIsGeneratingScriptAudio(false);
+    }
+  };
 
   const handleTopicChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
@@ -289,6 +384,9 @@ export default function HomePage() {
     if (pipeline.videoScript) {
       variables.VideoScript = pipeline.videoScript;
     }
+    if (pipeline.narrationScript) {
+      variables.NarrationScript = pipeline.narrationScript;
+    }
     if (pipeline.title) {
       variables.Title = pipeline.title;
     }
@@ -336,10 +434,12 @@ export default function HomePage() {
         throw new Error(message);
       }
 
-      setPipeline((prev) => {
-        const producedVariables: Record<string, string> =
-          data.producedVariables ?? {};
+      const producedVariables: Record<string, string> =
+        data.producedVariables ?? {};
+      const currentModel = pipeline.model;
+      const currentTopic = pipeline.topic;
 
+      setPipeline((prev) => {
         const updatedSteps = {
           ...prev.steps,
           [stepId]: {
@@ -376,6 +476,112 @@ export default function HomePage() {
 
         return nextPipeline;
       });
+
+      // Auto-run narrationClean after script step completes successfully
+      if (stepId === "script" && producedVariables.VideoScript) {
+        const narrationCleanConfig = STEP_CONFIGS.find(
+          (config) => config.id === "narrationClean",
+        );
+        if (narrationCleanConfig) {
+          // Run narrationClean step automatically
+          const narrationVariables: Record<string, string> = {
+            VideoScript: producedVariables.VideoScript,
+          };
+
+          setPipeline((prev) => ({
+            ...prev,
+            steps: {
+              ...prev.steps,
+              narrationClean: {
+                ...prev.steps.narrationClean,
+                status: "running",
+                errorMessage: undefined,
+              },
+            },
+          }));
+
+          try {
+            const narrationResponse = await fetch("/api/agent/run-step", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                stepId: "narrationClean",
+                model: currentModel,
+                topic: currentTopic,
+                variables: narrationVariables,
+              }),
+            });
+
+            const narrationData = await narrationResponse.json();
+            if (narrationResponse.ok && !narrationData?.error) {
+              setPipeline((prev) => {
+                const narrationProducedVariables: Record<string, string> =
+                  narrationData.producedVariables ?? {};
+
+                const updatedSteps = {
+                  ...prev.steps,
+                  narrationClean: {
+                    ...prev.steps.narrationClean,
+                    resolvedPrompt: narrationData.resolvedPrompt ?? "",
+                    responseText: narrationData.responseText ?? "",
+                    status: "success" as const,
+                    metrics: narrationData.metrics,
+                    errorMessage: undefined,
+                  },
+                };
+
+                const nextPipeline: PipelineState = {
+                  ...prev,
+                  steps: updatedSteps,
+                };
+
+                for (const [key, value] of Object.entries(
+                  narrationProducedVariables,
+                )) {
+                  const field =
+                    PRODUCED_VARIABLE_TO_PIPELINE_FIELD[key as VariableKey];
+                  if (field) {
+                    nextPipeline[field] = value;
+                  }
+                }
+
+                nextPipeline.totalTokens = Object.values(updatedSteps).reduce(
+                  (sum, step) => sum + (step.metrics?.totalTokens ?? 0),
+                  0,
+                );
+                nextPipeline.totalCostUsd = Object.values(updatedSteps).reduce(
+                  (sum, step) => sum + (step.metrics?.costUsd ?? 0),
+                  0,
+                );
+
+                return nextPipeline;
+              });
+            } else {
+              throw new Error(
+                narrationData?.error || "Failed to run narration cleaning step",
+              );
+            }
+          } catch (narrationError) {
+            const message =
+              narrationError instanceof Error
+                ? narrationError.message
+                : "Failed to run narration cleaning step.";
+            setPipeline((prev) => ({
+              ...prev,
+              steps: {
+                ...prev.steps,
+                narrationClean: {
+                  ...prev.steps.narrationClean,
+                  status: "error",
+                  errorMessage: message,
+                },
+              },
+            }));
+          }
+        }
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to run step.";
@@ -636,6 +842,7 @@ export default function HomePage() {
                     ["HookScript", "hookScript"],
                     ["QuizInfo", "quizInfo"],
                     ["VideoScript", "videoScript"],
+                    ["NarrationScript", "narrationScript"],
                     ["Title", "title"],
                     ["Description", "description"],
                     ["ThumbnailPrompt", "thumbnailPrompt"],
@@ -680,18 +887,70 @@ export default function HomePage() {
         </Card>
 
         <main className="grid gap-6 pb-16">
-          {STEP_CONFIGS.map((config) => (
-            <StepCard
-              key={config.id}
-              stepConfig={config}
-              stepState={pipeline.steps[config.id]}
-              sharedVars={sharedVars}
-              templateValue={promptOverrides[config.id] ?? config.promptTemplate}
-              onRunStep={handleRunStep}
-              onPromptChange={handlePromptChange}
-              onResetPrompt={handleResetPrompt}
-            />
-          ))}
+          {STEP_CONFIGS.filter((config) => !config.hidden).map((config) => {
+            const stepState = pipeline.steps[config.id];
+            const isScriptStep = config.id === "script";
+
+            return (
+              <div key={config.id} className="space-y-4">
+                <StepCard
+                  stepConfig={config}
+                  stepState={stepState}
+                  sharedVars={sharedVars}
+                  templateValue={
+                    promptOverrides[config.id] ?? config.promptTemplate
+                  }
+                  onRunStep={handleRunStep}
+                  onPromptChange={handlePromptChange}
+                  onResetPrompt={handleResetPrompt}
+                />
+                {isScriptStep && (
+                  <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950/60 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-500">
+                          Narration
+                        </p>
+                        <p className="text-sm text-zinc-400">
+                          Generate ElevenLabs audio narration for this script.
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        className="rounded-xl border-zinc-700 bg-transparent text-zinc-100 hover:border-amber-400 hover:bg-amber-500/90 hover:text-black disabled:opacity-60"
+                        onClick={handleGenerateScriptAudio}
+                        disabled={isGeneratingScriptAudio || !hasScript}
+                      >
+                        {isGeneratingScriptAudio
+                          ? "Generating audio…"
+                          : "Generate Voice for Script"}
+                      </Button>
+                    </div>
+                    {scriptAudioError && (
+                      <div
+                        role="alert"
+                        className="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"
+                      >
+                        {scriptAudioError}
+                      </div>
+                    )}
+                    {scriptAudioUrl && (
+                      <div className="mt-3 space-y-2">
+                        <audio controls src={scriptAudioUrl} className="w-full" />
+                        <a
+                          href={scriptAudioUrl}
+                          download={`${slugifyTopic(pipeline.topic)}-script.mp3`}
+                          className="text-sm text-amber-300 underline hover:text-amber-200"
+                        >
+                          Download audio
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </main>
       </div>
     </div>

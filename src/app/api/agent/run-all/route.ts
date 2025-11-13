@@ -24,6 +24,7 @@ const STEP_IDS: StepId[] = [
   'hook',
   'quizzes',
   'script',
+  'narrationClean',
   'titleDescription',
   'thumbnail',
 ];
@@ -33,6 +34,7 @@ const VARIABLE_TO_PIPELINE_FIELD: Partial<Record<VariableKey, keyof PipelineStat
   HookScript: 'hookScript',
   QuizInfo: 'quizInfo',
   VideoScript: 'videoScript',
+  NarrationScript: 'narrationScript',
   Title: 'title',
   Description: 'description',
   ThumbnailPrompt: 'thumbnailPrompt',

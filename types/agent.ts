@@ -5,6 +5,7 @@ export type StepId =
   | 'hook'
   | 'quizzes'
   | 'script'
+  | 'narrationClean'
   | 'titleDescription'
   | 'thumbnail';
 
@@ -14,6 +15,7 @@ export type VariableKey =
   | 'HookScript'
   | 'QuizInfo'
   | 'VideoScript'
+  | 'NarrationScript'
   | 'Title'
   | 'Description'
   | 'ThumbnailPrompt';
@@ -25,6 +27,7 @@ export interface StepConfig {
   promptTemplate: string;
   inputVars: VariableKey[];
   outputVars: VariableKey[];
+  hidden?: boolean; // If true, step is internal and not shown in UI
 }
 
 export interface StepRunMetrics {
@@ -49,6 +52,7 @@ export interface PipelineState {
   hookScript?: string;
   quizInfo?: string;
   videoScript?: string;
+  narrationScript?: string;
   title?: string;
   description?: string;
   thumbnailPrompt?: string;

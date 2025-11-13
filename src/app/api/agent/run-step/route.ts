@@ -26,6 +26,7 @@ const STEP_IDS: StepId[] = [
   'hook',
   'quizzes',
   'script',
+  'narrationClean',
   'titleDescription',
   'thumbnail',
 ];

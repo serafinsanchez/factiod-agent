@@ -27,6 +27,7 @@ type SharedVars = Pick<
   | "hookScript"
   | "quizInfo"
   | "videoScript"
+  | "narrationScript"
   | "title"
   | "description"
   | "thumbnailPrompt"
@@ -48,6 +49,7 @@ const VARIABLE_MAP: Record<VariableKey, keyof SharedVars> = {
   HookScript: "hookScript",
   QuizInfo: "quizInfo",
   VideoScript: "videoScript",
+  NarrationScript: "narrationScript",
   Title: "title",
   Description: "description",
   ThumbnailPrompt: "thumbnailPrompt",
