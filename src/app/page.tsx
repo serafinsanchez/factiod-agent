@@ -183,6 +183,16 @@ export default function HomePage() {
   const [scriptAudioUrl, setScriptAudioUrl] = useState<string | null>(null);
   const [scriptAudioError, setScriptAudioError] = useState<string | null>(null);
 
+  const [isGeneratingThumbnail, setIsGeneratingThumbnail] = useState(false);
+  const [thumbnailImage, setThumbnailImage] = useState<{
+    data: string;
+    mimeType: string;
+  } | null>(null);
+  const [thumbnailGenerationTime, setThumbnailGenerationTime] = useState<
+    number | null
+  >(null);
+  const [thumbnailError, setThumbnailError] = useState<string | null>(null);
+
   const sharedVars = useMemo(
     () => ({
       topic: pipeline.topic,
@@ -308,6 +318,53 @@ export default function HomePage() {
     } finally {
       setIsGeneratingScriptAudio(false);
     }
+  };
+
+  const handleGenerateThumbnail = async () => {
+    const prompt = pipeline.thumbnailPrompt?.trim();
+    if (!prompt) {
+      return;
+    }
+
+    setIsGeneratingThumbnail(true);
+    setThumbnailError(null);
+    setThumbnailImage(null);
+    setThumbnailGenerationTime(null);
+
+    const startTime = performance.now();
+
+    try {
+      const res = await fetch("/api/gemini/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to generate thumbnail");
+      }
+
+      const data = await res.json();
+      setThumbnailImage({ data: data.imageBase64, mimeType: data.mimeType });
+      setThumbnailGenerationTime(performance.now() - startTime);
+    } catch (err) {
+      setThumbnailError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setIsGeneratingThumbnail(false);
+    }
+  };
+
+  const handleDownloadThumbnail = () => {
+    if (!thumbnailImage) {
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = `data:${thumbnailImage.mimeType};base64,${thumbnailImage.data}`;
+    link.download = `${slugifyTopic(pipeline.topic)}-thumbnail.png`;
+    document.body?.appendChild(link);
+    link.click();
+    document.body?.removeChild(link);
   };
 
   const handleTopicChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -890,6 +947,7 @@ export default function HomePage() {
           {STEP_CONFIGS.filter((config) => !config.hidden).map((config) => {
             const stepState = pipeline.steps[config.id];
             const isScriptStep = config.id === "script";
+            const isThumbnailStep = config.id === "thumbnail";
 
             return (
               <div key={config.id} className="space-y-4">
@@ -944,6 +1002,68 @@ export default function HomePage() {
                         >
                           Download audio
                         </a>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {isThumbnailStep && (
+                  <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950/60 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-500">
+                          Thumbnail Image
+                        </p>
+                        <p className="text-sm text-zinc-400">
+                          Generate a 16:9 thumbnail using Gemini Nano Banana 2.
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        className="rounded-xl border-zinc-700 bg-transparent text-zinc-100 hover:border-amber-400 hover:bg-amber-500/90 hover:text-black disabled:opacity-60"
+                        onClick={handleGenerateThumbnail}
+                        disabled={
+                          isGeneratingThumbnail ||
+                          !pipeline.thumbnailPrompt?.trim()
+                        }
+                      >
+                        {isGeneratingThumbnail
+                          ? "Generating image…"
+                          : "Generate Thumbnail"}
+                      </Button>
+                    </div>
+                    {thumbnailError && (
+                      <div
+                        role="alert"
+                        className="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200"
+                      >
+                        {thumbnailError}
+                      </div>
+                    )}
+                    {thumbnailImage && (
+                      <div className="mt-4 space-y-3">
+                        <div className="overflow-hidden rounded-xl border border-zinc-800">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={`data:${thumbnailImage.mimeType};base64,${thumbnailImage.data}`}
+                            alt="Generated thumbnail"
+                            className="w-full"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between">
+                          {thumbnailGenerationTime && (
+                            <span className="text-xs text-zinc-500">
+                              Generated in{" "}
+                              {(thumbnailGenerationTime / 1000).toFixed(1)}s
+                            </span>
+                          )}
+                          <Button
+                            variant="ghost"
+                            className="h-8 text-sm text-amber-300 hover:bg-amber-500/10 hover:text-amber-200"
+                            onClick={handleDownloadThumbnail}
+                          >
+                            Download Image
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>
