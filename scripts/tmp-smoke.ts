@@ -15,7 +15,7 @@ async function run() {
   const invalidRunAllReq = new Request('http://localhost/api/agent/run-all', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'gpt5-thinking' }),
+    body: JSON.stringify({ model: 'gpt-5.1-2025-11-13' }),
   });
 
   const runAllRes = await runAllPost(invalidRunAllReq);

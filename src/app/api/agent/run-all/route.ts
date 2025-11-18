@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { runStep } from '../../../../../lib/agent/runStep';
 import { STEP_CONFIGS } from '../../../../../lib/agent/steps';
 import { interpolatePrompt } from '../../../../../lib/agent/interpolate';
+import { normalizeModelId } from '../../../../../lib/llm/models';
 import type {
   ModelId,
   PipelineState,
@@ -18,7 +19,6 @@ type RunAllRequestBody = {
   promptTemplateOverrides?: Partial<Record<StepId, string>>;
 };
 
-const MODEL_IDS: ModelId[] = ['gpt5-thinking', 'kimik2-thinking'];
 const STEP_IDS: StepId[] = [
   'keyConcepts',
   'hook',
@@ -39,10 +39,6 @@ const VARIABLE_TO_PIPELINE_FIELD: Partial<Record<VariableKey, keyof PipelineStat
   Description: 'description',
   ThumbnailPrompt: 'thumbnailPrompt',
 };
-
-function isModelId(value: unknown): value is ModelId {
-  return typeof value === 'string' && MODEL_IDS.includes(value as ModelId);
-}
 
 function isStepId(value: unknown): value is StepId {
   return typeof value === 'string' && STEP_IDS.includes(value as StepId);
@@ -87,7 +83,8 @@ function parseRequestBody(body: unknown): RunAllRequestBody | { error: string } 
     return { error: 'Missing or invalid topic.' };
   }
 
-  if (!isModelId(model)) {
+  const normalizedModel = normalizeModelId(model);
+  if (!normalizedModel) {
     return { error: 'Missing or invalid model.' };
   }
 
@@ -98,7 +95,7 @@ function parseRequestBody(body: unknown): RunAllRequestBody | { error: string } 
 
   return {
     topic,
-    model,
+    model: normalizedModel,
     promptTemplateOverrides: normalizedOverrides,
   };
 }

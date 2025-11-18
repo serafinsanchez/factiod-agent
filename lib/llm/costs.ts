@@ -9,7 +9,7 @@ type TokenPricing = {
 export const TOKENS_PER_MILLION = 1_000_000;
 
 export const PRICES: Record<ModelId, TokenPricing> = {
-  'gpt5-thinking': {
+  'gpt-5.1-2025-11-13': {
     input: 1.25, // USD per 1M input tokens (cache miss)
     cachedInput: 0.125, // USD per 1M cached input tokens (cache hit)
     output: 10.0, // USD per 1M output tokens

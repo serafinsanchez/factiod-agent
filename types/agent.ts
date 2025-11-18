@@ -1,4 +1,4 @@
-export type ModelId = 'gpt5-thinking' | 'kimik2-thinking';
+export type ModelId = 'gpt-5.1-2025-11-13' | 'kimik2-thinking';
 
 export type StepId =
   | 'keyConcepts'
@@ -6,6 +6,7 @@ export type StepId =
   | 'quizzes'
   | 'script'
   | 'narrationClean'
+  | 'narrationAudioTags'
   | 'titleDescription'
   | 'thumbnail';
 

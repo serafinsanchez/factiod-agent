@@ -13,6 +13,7 @@ import {
   RadioGroupItem,
 } from "@/components/ui/radio-group";
 import { STEP_CONFIGS } from "../../lib/agent/steps";
+import { DEFAULT_MODEL_ID, getModelOptions, normalizeModelId } from "../../lib/llm/models";
 import { cn } from "@/lib/utils";
 import type {
   ModelId,
@@ -22,7 +23,7 @@ import type {
   VariableKey,
 } from "../../types/agent";
 
-const MODEL_OPTIONS: ModelId[] = ["gpt5-thinking", "kimik2-thinking"];
+const MODEL_OPTIONS: ModelId[] = getModelOptions();
 
 function createInitialSteps(): Record<StepId, StepRunState> {
   return STEP_CONFIGS.reduce(
@@ -42,7 +43,7 @@ function createInitialSteps(): Record<StepId, StepRunState> {
 function createInitialPipeline(): PipelineState {
   return {
     topic: "",
-    model: "gpt5-thinking",
+    model: DEFAULT_MODEL_ID,
     steps: createInitialSteps(),
     totalTokens: 0,
     totalCostUsd: 0,
@@ -59,9 +60,11 @@ function loadInitialPipeline(): PipelineState {
         const parsed = JSON.parse(raw);
         if (isPipelineState(parsed)) {
           const base = createInitialPipeline();
+          const normalizedModel = normalizeModelId(parsed.model) ?? DEFAULT_MODEL_ID;
           return {
             ...base,
             ...parsed,
+            model: normalizedModel,
             steps: {
               ...base.steps,
               ...parsed.steps,
@@ -247,6 +250,19 @@ export default function HomePage() {
     Boolean(pipeline.thumbnailPrompt?.trim());
 
   const hasScript = Boolean(pipeline.videoScript?.trim());
+  const videoScriptStats = useMemo(() => {
+    const raw = pipeline.videoScript;
+    if (typeof raw !== "string") {
+      return null;
+    }
+    const text = raw.trim();
+    if (!text) {
+      return null;
+    }
+    const words = text.split(/\s+/).filter(Boolean).length;
+    const characters = text.length;
+    return { words, characters };
+  }, [pipeline.videoScript]);
 
   const handleGenerateScriptAudio = async () => {
     // Use narrationScript if available, otherwise fall back to videoScript
@@ -497,6 +513,11 @@ export default function HomePage() {
                 status: "running",
                 errorMessage: undefined,
               },
+              narrationAudioTags: {
+                ...prev.steps.narrationAudioTags,
+                status: "idle",
+                errorMessage: undefined,
+              },
             },
           }));
 
@@ -516,10 +537,14 @@ export default function HomePage() {
 
             const narrationData = await narrationResponse.json();
             if (narrationResponse.ok && !narrationData?.error) {
-              setPipeline((prev) => {
-                const narrationProducedVariables: Record<string, string> =
-                  narrationData.producedVariables ?? {};
+              const narrationProducedVariables: Record<string, string> =
+                narrationData.producedVariables ?? {};
+              const narrationScriptText =
+                narrationProducedVariables.NarrationScript ??
+                narrationData.responseText ??
+                "";
 
+              setPipeline((prev) => {
                 const updatedSteps = {
                   ...prev.steps,
                   narrationClean: {
@@ -558,6 +583,110 @@ export default function HomePage() {
 
                 return nextPipeline;
               });
+
+              if (narrationScriptText.trim().length > 0) {
+                setPipeline((prev) => ({
+                  ...prev,
+                  steps: {
+                    ...prev.steps,
+                    narrationAudioTags: {
+                      ...prev.steps.narrationAudioTags,
+                      status: "running",
+                      errorMessage: undefined,
+                    },
+                  },
+                }));
+
+                try {
+                  const audioTagResponse = await fetch("/api/agent/run-step", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      stepId: "narrationAudioTags",
+                      model: currentModel,
+                      topic: currentTopic,
+                      variables: {
+                        NarrationScript: narrationScriptText,
+                      },
+                    }),
+                  });
+
+                  const audioTagData = await audioTagResponse.json();
+                  if (audioTagResponse.ok && !audioTagData?.error) {
+                    setPipeline((prev) => {
+                      const audioTagProducedVariables: Record<string, string> =
+                        audioTagData.producedVariables ?? {};
+
+                      const updatedSteps = {
+                        ...prev.steps,
+                        narrationAudioTags: {
+                          ...prev.steps.narrationAudioTags,
+                          resolvedPrompt: audioTagData.resolvedPrompt ?? "",
+                          responseText: audioTagData.responseText ?? "",
+                          status: "success" as const,
+                          metrics: audioTagData.metrics,
+                          errorMessage: undefined,
+                        },
+                      };
+
+                      const nextPipeline: PipelineState = {
+                        ...prev,
+                        steps: updatedSteps,
+                      };
+
+                      for (const [key, value] of Object.entries(
+                        audioTagProducedVariables,
+                      )) {
+                        const field =
+                          PRODUCED_VARIABLE_TO_PIPELINE_FIELD[
+                            key as VariableKey
+                          ];
+                        if (field) {
+                          nextPipeline[field] = value;
+                        }
+                      }
+
+                      nextPipeline.totalTokens = Object.values(
+                        updatedSteps,
+                      ).reduce(
+                        (sum, step) => sum + (step.metrics?.totalTokens ?? 0),
+                        0,
+                      );
+                      nextPipeline.totalCostUsd = Object.values(
+                        updatedSteps,
+                      ).reduce(
+                        (sum, step) => sum + (step.metrics?.costUsd ?? 0),
+                        0,
+                      );
+
+                      return nextPipeline;
+                    });
+                  } else {
+                    throw new Error(
+                      audioTagData?.error ||
+                        "Failed to run narration audio tag step",
+                    );
+                  }
+                } catch (audioTagError) {
+                  const message =
+                    audioTagError instanceof Error
+                      ? audioTagError.message
+                      : "Failed to run narration audio tag step.";
+                  setPipeline((prev) => ({
+                    ...prev,
+                    steps: {
+                      ...prev.steps,
+                      narrationAudioTags: {
+                        ...prev.steps.narrationAudioTags,
+                        status: "error",
+                        errorMessage: message,
+                      },
+                    },
+                  }));
+                }
+              }
             } else {
               throw new Error(
                 narrationData?.error || "Failed to run narration cleaning step",
@@ -905,7 +1034,33 @@ export default function HomePage() {
                   onResetPrompt={handleResetPrompt}
                 />
                 {isScriptStep && (
-                  <div className="rounded-2xl border border-zinc-800/60 bg-zinc-950/60 p-4">
+                  <div className="space-y-4 rounded-2xl border border-zinc-800/60 bg-zinc-950/60 p-4">
+                    {videoScriptStats && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4">
+                          <div className="text-[0.7rem] font-semibold uppercase tracking-widest text-emerald-200">
+                            Word Count
+                          </div>
+                          <div className="mt-1 text-2xl font-semibold text-emerald-50">
+                            {videoScriptStats.words.toLocaleString()}
+                          </div>
+                          <p className="text-xs text-emerald-100/80">
+                            Target ≥ 1,600 words for a 10-min narration.
+                          </p>
+                        </div>
+                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                          <div className="text-[0.7rem] font-semibold uppercase tracking-widest text-zinc-400">
+                            Character Count
+                          </div>
+                          <div className="mt-1 text-2xl font-semibold text-zinc-100">
+                            {videoScriptStats.characters.toLocaleString()}
+                          </div>
+                          <p className="text-xs text-zinc-400">
+                            Includes spaces and punctuation.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.25em] text-zinc-500">

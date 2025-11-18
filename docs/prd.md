@@ -19,7 +19,7 @@ Features:
 * Run all 6 steps in automatic sequence
 * View the resolved prompt, output, tokens, and cost per step
 * See total tokens + cost across all steps
-* Select model: **gpt5-thinking** or **kimik2-thinking**
+* Select model: **gpt-5.1-2025-11-13** (legacy alias `gpt5-thinking`) or **kimik2-thinking**
 * Each step passes outputs to downstream steps as variables
 
 ---
@@ -197,7 +197,7 @@ Here are the key concepts
 # **4. Type System**
 
 ```ts
-export type ModelId = 'gpt5-thinking' | 'kimik2-thinking';
+export type ModelId = 'gpt-5.1-2025-11-13' | 'kimik2-thinking';
 
 export type StepId =
   | 'keyConcepts'
@@ -269,9 +269,9 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export async function callModel(model: ModelId, prompt: string) {
   const modelName =
-    model === 'gpt5-thinking'
-      ? 'gpt-5.1-thinking'
-      : 'kimik2-thinking';
+    model === 'gpt-5.1-2025-11-13'
+      ? 'gpt-5.1-2025-11-13'
+      : 'kimi-k2-thinking';
 
   const result = await client.chat.completions.create({
     model: modelName,
@@ -292,7 +292,7 @@ export async function callModel(model: ModelId, prompt: string) {
 
 ```ts
 const PRICES: Record<ModelId, { input: number; output: number }> = {
-  'gpt5-thinking': { input: 0.0xx, output: 0.0xx },
+  'gpt-5.1-2025-11-13': { input: 0.0xx, output: 0.0xx },
   'kimik2-thinking': { input: 0.0yy, output: 0.0yy },
 };
 
@@ -315,7 +315,7 @@ export function estimateCost(model: ModelId, promptTokens: number, completionTok
 ```json
 {
   "stepId": "hook",
-  "model": "gpt5-thinking",
+  "model": "gpt-5.1-2025-11-13",
   "topic": "How volcanoes work",
   "variables": {
     "KeyConcepts": "...",
@@ -375,7 +375,7 @@ The main page should include:
 * Topic input
 * Model selector (radio dropdown):
 
-  * gpt5-thinking
+* gpt-5.1-2025-11-13
   * kimik2-thinking
 * “Run all steps (Auto)” button
 * Total tokens + cost summary

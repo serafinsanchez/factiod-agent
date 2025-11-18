@@ -20,6 +20,25 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Environment Variables
+
+Create a `.env.local` file with the required ElevenLabs credentials before running the TTS features:
+
+```
+ELEVENLABS_API_KEY=your_xi_api_key
+ELEVENLABS_VOICE_ID=your_voice_id
+ELEVENLABS_MODEL_ID=eleven_v3
+```
+
+## Narration Post-processing
+
+The pipeline automatically performs two hidden clean-up steps after the main script is generated:
+
+- **Narration Cleaner** removes any stage directions or production notes so ElevenLabs only receives spoken lines.
+- **Narration Audio Tags** enriches the cleaned narration with ElevenLabs v3 audio tags (e.g., `[whispers]`, `[laughs]`, `[sighs]`) without changing the underlying words. Tags appear directly inside the final `NarrationScript`, so exporting or generating TTS audio will include the expressive cues automatically.
+
+No additional configuration is required—complete a normal run of the `script` step (or click **Run All**) and the hidden narration steps fire sequentially. If an enhancement step ever fails, its status is surfaced in the UI so you can retry once your script is ready.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

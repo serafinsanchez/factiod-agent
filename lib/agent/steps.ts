@@ -1,10 +1,11 @@
 import { StepConfig, StepId } from '../../types/agent';
+import { DEFAULT_MODEL_ID } from '../llm/models';
 
 export const STEP_CONFIGS: StepConfig[] = [
   {
     id: 'keyConcepts',
     label: 'Prompt 1 – Key Concepts',
-    defaultModel: 'gpt5-thinking',
+    defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['Topic'],
     outputVars: ['KeyConcepts'],
     promptTemplate: `You are an expert at scripting educational kids videos. You have great pedagogical skills and you know how to make things engaging for elementary aged kids. Today you are preparing an outline on a new video. Here is the video topic. 
@@ -14,7 +15,7 @@ The video will be about 10 minutes long. Which key concepts should we cover duri
   {
     id: 'hook',
     label: 'Prompt 2 – Hook',
-    defaultModel: 'gpt5-thinking',
+    defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['Topic', 'KeyConcepts'],
     outputVars: ['HookScript'],
     promptTemplate: `Video Topic: [Topic]
@@ -57,7 +58,7 @@ Output only the final spoken hook script.`,
   {
     id: 'quizzes',
     label: 'Prompt 3 – Quiz Generation',
-    defaultModel: 'gpt5-thinking',
+    defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['Topic', 'KeyConcepts', 'HookScript'],
     outputVars: ['QuizInfo'],
     promptTemplate: `I’m preparing a youtube video that teaches kids in a fun and engaging way. The kids are aged 5 to 9 and in elementary school. I want my video to have pauses for two quizzes. 
@@ -80,7 +81,7 @@ Silently think about your choices and evaluate them for pedagogical importance a
   {
     id: 'script',
     label: 'Prompt 4 – Script Generation',
-    defaultModel: 'gpt5-thinking',
+    defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['Topic', 'KeyConcepts', 'HookScript', 'QuizInfo'],
     outputVars: ['VideoScript'],
     promptTemplate: `You are an expert at scripting educational kids videos. You have great pedagogical skills and you know how to make things engaging for elementary aged kids. I already wrote the video topic, key concepts, and the hook for the video. I also wrote two quiz questions that I want to interject in the video. We will pause the video and ask the quiz questions. That way we know the kid is engaged to the video instead of just watching like a zombie. 
@@ -104,7 +105,7 @@ Include the hook at the top of the script when you output the script. Don't do a
   {
     id: 'narrationClean',
     label: 'Prompt 4b – Narration Cleaner',
-    defaultModel: 'gpt5-thinking',
+    defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['VideoScript'],
     outputVars: ['NarrationScript'],
     hidden: true,
@@ -122,9 +123,32 @@ Video Script:
 — [VideoScript] —`,
   },
   {
+    id: 'narrationAudioTags',
+    label: 'Prompt 4c – Narration Audio Tags',
+    defaultModel: DEFAULT_MODEL_ID,
+    inputVars: ['NarrationScript'],
+    outputVars: ['NarrationScript'],
+    hidden: true,
+    promptTemplate: `You are an AI assistant specializing in enhancing dialogue for speech generation.
+
+PRIMARY GOAL: Dynamically integrate audio tags (e.g., [laughs], [whispers], [sighs]) while STRICTLY preserving all original words and meaning. Do not remove or rewrite any words.
+
+Rules:
+- Only add voice-related audio tags in square brackets. No SFX/music/stage directions.
+- Place tags before or after the specific phrase they modify.
+- Vary delivery: [whispers], [excited], [curious], [sighs], [laughs], [chuckles], [clears throat], [short pause], [long pause], etc.
+- You may add emphasis with capitalization, question marks, exclamation marks, or ellipses, but DO NOT change words.
+- Do not introduce or imply sensitive topics.
+
+Output ONLY the enhanced narration text, same lines in the same order.
+
+Narration Script:
+— [NarrationScript] —`,
+  },
+  {
     id: 'titleDescription',
     label: 'Prompt 5 – Title & Description',
-    defaultModel: 'gpt5-thinking',
+    defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['Topic', 'KeyConcepts', 'HookScript', 'QuizInfo'],
     outputVars: ['Title', 'Description'],
     promptTemplate: `You are an expert youtube marketer. I have a kids youtube channel called PIP academy. We teach lots of topics to elementary aged kids 5 to 9. I want you to make a title that is catchy and works well for youtube SEO. I am a premium kids content maker so you must consider my brand over everything else. No clickbait phrases: avoid “you won’t believe,” “craziest,” “insane,” “mind-blowing,” “secret” etc.
@@ -147,7 +171,7 @@ Title on its own line, blank line, then description.`,
   {
     id: 'thumbnail',
     label: 'Prompt 6 – Thumbnail Prompt',
-    defaultModel: 'gpt5-thinking',
+    defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['Topic', 'KeyConcepts'],
     outputVars: ['ThumbnailPrompt'],
     promptTemplate: `You are an expert youtube marketer. My Youtube channel teaches elementary aged kids aged 5 to 9. I need to generate a video thumbnail that is 16:9. I need something that will spark curiosity for a child. My best performing videos feature a photoreal image of a kid's face doing something in the video, but it’s not totally required.

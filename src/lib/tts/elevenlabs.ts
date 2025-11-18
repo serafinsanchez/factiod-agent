@@ -2,7 +2,9 @@ const ELEVENLABS_BASE_URL = 'https://api.elevenlabs.io/v1';
 
 const API_KEY = process.env.ELEVENLABS_API_KEY!;
 const DEFAULT_VOICE_ID = process.env.ELEVENLABS_VOICE_ID!;
-const DEFAULT_MODEL_ID = process.env.ELEVENLABS_MODEL_ID ?? 'eleven_flash_v2_5';
+const DEFAULT_MODEL_ID = process.env.ELEVENLABS_MODEL_ID ?? 'eleven_v3';
+export const ELEVEN_V3_MAX_CHARS = 5000;
+export const ELEVEN_V3_SAFE_CHARS = 3800;
 
 if (!API_KEY) {
   console.warn('ELEVENLABS_API_KEY is not set. TTS will fail.');

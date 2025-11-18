@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { generateTtsAudio } from '@/lib/tts/elevenlabs';
+import { generateNarrationMultiChunk } from '@/lib/tts/elevenlabsOrchestrator';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,7 +15,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const audioBuffer = await generateTtsAudio(text, { voiceId, modelId });
+    const audioBuffer = await generateNarrationMultiChunk(text, {
+      voiceId,
+      modelId,
+    });
 
     return new NextResponse(new Uint8Array(audioBuffer), {
       status: 200,
@@ -25,12 +28,13 @@ export async function POST(req: NextRequest) {
         'Cache-Control': 'no-store',
       },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('TTS generation error', err);
+    const details = err instanceof Error ? err.message : undefined;
     return NextResponse.json(
       {
         error: 'Failed to generate audio',
-        details: err?.message,
+        details,
       },
       { status: 500 },
     );
