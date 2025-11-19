@@ -22,13 +22,54 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 ## Environment Variables
 
-Create a `.env.local` file with the required ElevenLabs credentials before running the TTS features:
+Create a `.env.local` file with the required API keys:
 
+- `NEXT_PUBLIC_SUPABASE_URL` – your Supabase project URL.
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` – anon public key.
+- `SUPABASE_SERVICE_ROLE_KEY` – service role key (used only on the server, never expose it to the client).
+- `GEMINI_API_KEY` – for thumbnail generation.
+- `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` – for TTS (see `src/lib/tts/elevenlabs.ts`).
+
+## Supabase Configuration
+
+The app stores project history (one project per video) and media assets (script, audio, thumbnail) in Supabase.
+
+### Database schema (`projects` table)
+
+Create a `projects` table to store full pipeline snapshots and asset paths:
+
+```sql
+create table public.projects (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+
+  topic text not null,
+  model text not null,
+  title text,
+  description text,
+
+  project_slug text not null,
+  script_path text,
+  audio_path text,
+  thumbnail_path text,
+
+  pipeline jsonb not null
+);
 ```
-ELEVENLABS_API_KEY=your_xi_api_key
-ELEVENLABS_VOICE_ID=your_voice_id
-ELEVENLABS_MODEL_ID=eleven_v3
-```
+
+Row Level Security can be enabled later and tied to a `user_id` column when you add authentication. For now you can keep RLS disabled or add permissive policies for development.
+
+### Storage bucket structure
+
+Create a Supabase Storage bucket named `projects`. Each saved project gets its own folder:
+
+- Folder: `projects/<project_slug>/`
+  - `projects/<project_slug>/<project_slug>.md` – full script as markdown.
+  - `projects/<project_slug>/<project_slug>-audio.mp3` – generated narration audio.
+  - `projects/<project_slug>/<project_slug>-thumbnail.png` – generated thumbnail image.
+
+The code assumes these paths when saving assets and when reconstructing URLs for playback/download.
 
 ## Narration Post-processing
 

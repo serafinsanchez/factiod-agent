@@ -1,16 +1,25 @@
 import { GoogleGenAI } from "@google/genai";
 
+import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  PROJECTS_BUCKET,
+  buildProjectThumbnailPath,
+} from "@/lib/projects";
+
 export async function POST(request: Request) {
   try {
-    const { prompt } = await request.json();
+    const { prompt, projectSlug } = await request.json();
 
-    if (!prompt) {
+    if (!prompt || typeof prompt !== "string") {
       return Response.json({ error: "Prompt is required" }, { status: 400 });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return Response.json({ error: "GEMINI_API_KEY is not set" }, { status: 500 });
+      return Response.json(
+        { error: "GEMINI_API_KEY is not set" },
+        { status: 500 },
+      );
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -32,36 +41,85 @@ export async function POST(request: Request) {
     const imagePart = parts?.find((p) => p.inlineData);
 
     if (!imagePart?.inlineData) {
-      console.error("Gemini Image Generation Failed. Full Response:", JSON.stringify(response, null, 2));
+      console.error(
+        "Gemini Image Generation Failed. Full Response:",
+        JSON.stringify(response, null, 2),
+      );
 
       // Check for error finish reasons (SAFETY, RECITATION, etc.)
       // STOP is the normal completion status, not an error
       if (candidate?.finishReason && candidate.finishReason !== "STOP") {
-        return Response.json({
-          error: `Generation blocked with reason: ${candidate.finishReason}`,
-          details: response
-        }, { status: 500 });
+        return Response.json(
+          {
+            error: `Generation blocked with reason: ${candidate.finishReason}`,
+            details: response,
+          },
+          { status: 500 },
+        );
       }
 
-      return Response.json({
-        error: "No image data found in response. The model may have returned only text.",
-        details: response
-      }, { status: 500 });
+      return Response.json(
+        {
+          error:
+            "No image data found in response. The model may have returned only text.",
+          details: response,
+        },
+        { status: 500 },
+      );
+    }
+
+    const imageBase64 = imagePart.inlineData.data;
+    const mimeType = imagePart.inlineData.mimeType || "image/png";
+
+    let thumbnailPath: string | undefined;
+
+    if (typeof projectSlug === "string" && projectSlug.trim().length > 0) {
+      const slug = projectSlug.trim();
+      const path = buildProjectThumbnailPath(slug);
+
+      try {
+        const supabase = getSupabaseServerClient();
+        const binary = Buffer.from(imageBase64, "base64");
+        const { error: uploadError } = await supabase.storage
+          .from(PROJECTS_BUCKET)
+          .upload(path, binary, {
+            contentType: mimeType,
+            upsert: true,
+          });
+
+        if (uploadError) {
+          console.error("Supabase thumbnail upload error:", uploadError);
+        } else {
+          thumbnailPath = path;
+        }
+      } catch (storageError) {
+        console.error(
+          "Supabase configuration/storage error while uploading thumbnail:",
+          storageError,
+        );
+      }
+    } else {
+      console.warn(
+        "No projectSlug provided to /api/gemini/generate-image; skipping Supabase upload.",
+      );
     }
 
     return Response.json({
-      imageBase64: imagePart.inlineData.data,
-      mimeType: imagePart.inlineData.mimeType || "image/png",
+      imageBase64,
+      mimeType,
+      thumbnailPath,
     });
-
   } catch (error) {
     console.error("Gemini image generation error:", error);
     return Response.json(
-      { 
-        error: error instanceof Error ? error.message : "Failed to generate image",
-        details: error
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to generate image",
+        details: error,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

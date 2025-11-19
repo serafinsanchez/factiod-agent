@@ -280,6 +280,16 @@ export default function StepCard({
                   ${metrics.costUsd.toFixed(4)}
                 </div>
               </div>
+              {typeof metrics.durationMs === "number" && (
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                  <div className="text-[0.7rem] font-semibold uppercase tracking-widest text-zinc-500">
+                    Duration
+                  </div>
+                  <div className="mt-1 text-lg font-semibold text-zinc-100">
+                    {(metrics.durationMs / 1000).toFixed(1)}s
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : null}
