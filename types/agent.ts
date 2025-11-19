@@ -77,3 +77,12 @@ export interface PipelineState {
   thumbnailPath?: string;
 }
 
+export interface HistoryProject {
+  id: string;
+  topic: string;
+  title?: string | null;
+  projectSlug?: string | null;
+  model: ModelId;
+  createdAt?: string | null;
+}
+
