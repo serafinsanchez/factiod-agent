@@ -75,6 +75,16 @@ export async function POST(request: Request) {
     const imageBase64 = imagePart.inlineData.data;
     const mimeType = imagePart.inlineData.mimeType || "image/png";
 
+    // Type guard: ensure imageBase64 is a string
+    if (!imageBase64 || typeof imageBase64 !== "string") {
+      return Response.json(
+        {
+          error: "Invalid image data received from Gemini",
+        },
+        { status: 500 },
+      );
+    }
+
     let thumbnailPath: string | undefined;
 
     if (typeof projectSlug === "string" && projectSlug.trim().length > 0) {
