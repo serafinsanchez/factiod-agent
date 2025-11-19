@@ -35,6 +35,11 @@ export interface StepRunMetrics {
   outputTokens: number;
   totalTokens: number;
   costUsd: number;
+  /**
+   * Time taken to run the step on the backend, in milliseconds.
+   * Optional for backwards compatibility with older saved pipeline state.
+   */
+  durationMs?: number;
 }
 
 export interface StepRunState {
@@ -60,5 +65,14 @@ export interface PipelineState {
   model: ModelId;
   totalTokens: number;
   totalCostUsd: number;
+  /**
+   * Optional fields used for persistence of projects/history.
+   * These are kept optional so older saved state continues to work.
+   */
+  id?: string;
+  projectSlug?: string;
+  scriptPath?: string;
+  audioPath?: string;
+  thumbnailPath?: string;
 }
 

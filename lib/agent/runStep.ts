@@ -38,7 +38,10 @@ export async function runStep({
   const template = promptTemplateOverride ?? step.promptTemplate;
   const resolvedPrompt = interpolatePrompt(template, vars);
 
+  const startTime = Date.now();
   const { text, usage } = await callModel(model, resolvedPrompt);
+  const endTime = Date.now();
+  const durationMs = Math.max(0, endTime - startTime);
 
   const inputTokens = usage.prompt_tokens ?? 0;
   const outputTokens = usage.completion_tokens ?? 0;
@@ -50,6 +53,7 @@ export async function runStep({
     outputTokens,
     totalTokens,
     costUsd,
+    durationMs,
   };
 
   const producedVariables: Record<string, string> = step.outputVars.reduce(
