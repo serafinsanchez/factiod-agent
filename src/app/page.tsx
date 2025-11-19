@@ -245,6 +245,10 @@ const [scriptAudioGenerationTimeMs, setScriptAudioGenerationTimeMs] = useState<
 
   const [isSavingProject, setIsSavingProject] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isDeletingProjectId, setIsDeletingProjectId] = useState<string | null>(
+    null,
+  );
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const sharedVars = useMemo(
     () => ({
@@ -273,6 +277,7 @@ const [scriptAudioGenerationTimeMs, setScriptAudioGenerationTimeMs] = useState<
   const refreshHistory = useCallback(async () => {
     setIsLoadingHistory(true);
     setHistoryError(null);
+    setDeleteError(null);
     try {
       const response = await fetch("/api/history/list");
       const data = await response.json();
@@ -463,22 +468,27 @@ const [scriptAudioGenerationTimeMs, setScriptAudioGenerationTimeMs] = useState<
       return;
     }
 
+    setIsGeneratingThumbnail(true);
+    setThumbnailError(null);
+    setThumbnailImage(null);
+    setThumbnailGenerationTime(null);
+
+    // Use a small delay to ensure any pending state updates from saving have completed
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Read the latest state values after the delay
     const projectSlug = getOrCreateProjectSlug(
       pipeline.projectSlug,
       pipeline.topic,
     );
     const thumbnailPath = buildProjectThumbnailPath(projectSlug);
 
+    // Update pipeline state with slug and path
     setPipeline((prev) => ({
       ...prev,
       projectSlug,
       thumbnailPath,
     }));
-
-    setIsGeneratingThumbnail(true);
-    setThumbnailError(null);
-    setThumbnailImage(null);
-    setThumbnailGenerationTime(null);
 
     const startTime = performance.now();
 
@@ -990,6 +1000,27 @@ const [scriptAudioGenerationTimeMs, setScriptAudioGenerationTimeMs] = useState<
     );
   };
 
+  const handleNewProject = () => {
+    setPipeline(() => createInitialPipeline());
+    setPromptOverrides({});
+    setSelectedProjectId(null);
+    setActiveStageId("plan");
+    setSaveError(null);
+    setHistoryError(null);
+    setDeleteError(null);
+    setScriptAudioError(null);
+    setScriptAudioGenerationTimeMs(null);
+    setScriptAudioUrl((prev) => {
+      if (prev && prev.startsWith("blob:")) {
+        URL.revokeObjectURL(prev);
+      }
+      return null;
+    });
+    setThumbnailImage(null);
+    setThumbnailGenerationTime(null);
+    setThumbnailError(null);
+  };
+
   const handleSaveProject = async () => {
     const trimmedTopic = pipeline.topic.trim();
     if (!trimmedTopic) {
@@ -1036,9 +1067,9 @@ const [scriptAudioGenerationTimeMs, setScriptAudioGenerationTimeMs] = useState<
           ...data,
         }));
 
-        if (typeof data.id === "string") {
-          setSelectedProjectId(data.id);
-        }
+        const nextSelectedId =
+          typeof data.id === "string" ? data.id : (pipeline.id ?? null);
+        setSelectedProjectId(nextSelectedId);
       }
 
       await refreshHistory();
@@ -1107,6 +1138,76 @@ const [scriptAudioGenerationTimeMs, setScriptAudioGenerationTimeMs] = useState<
     }
   };
 
+  const handleDeleteProject = async (projectId: string) => {
+    if (!projectId) {
+      return;
+    }
+
+    const confirmed =
+      typeof window === "undefined"
+        ? true
+        : window.confirm(
+            "Delete this project and its generated assets? This cannot be undone.",
+          );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleteError(null);
+    setIsDeletingProjectId(projectId);
+
+    try {
+      const response = await fetch("/api/history/delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: projectId }),
+      });
+
+      let responseData: Record<string, unknown> | null = null;
+      try {
+        responseData = (await response.json()) as Record<string, unknown>;
+      } catch {
+        responseData = null;
+      }
+
+      if (!response.ok) {
+        const message =
+          (responseData &&
+            typeof responseData.error === "string" &&
+            responseData.error) ||
+          (responseData &&
+            typeof responseData.details === "string" &&
+            responseData.details) ||
+          `Failed to delete project (status ${response.status}).`;
+        throw new Error(message);
+      }
+
+      if (
+        responseData &&
+        typeof responseData.error === "string" &&
+        responseData.error.trim().length > 0
+      ) {
+        throw new Error(responseData.error);
+      }
+
+      setHistoryProjects((prev) =>
+        prev.filter((project) => project.id !== projectId),
+      );
+      setSelectedProjectId((prev) => (prev === projectId ? null : prev));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to delete project.";
+      setDeleteError(message);
+    } finally {
+      setIsDeletingProjectId((current) =>
+        current === projectId ? null : current,
+      );
+    }
+  };
+
   const handleRunAll = async () => {
     const trimmedTopic = pipeline.topic.trim();
     if (!trimmedTopic) {
@@ -1159,6 +1260,8 @@ const [scriptAudioGenerationTimeMs, setScriptAudioGenerationTimeMs] = useState<
         setPipeline((prev) => ({
           ...prev,
           ...data,
+          id: data.id ?? prev.id,
+          projectSlug: data.projectSlug ?? prev.projectSlug,
         }));
         return;
       }
@@ -1201,24 +1304,37 @@ const [scriptAudioGenerationTimeMs, setScriptAudioGenerationTimeMs] = useState<
                 Saved videos appear here. Select one to reload it.
               </p>
             </div>
-            <Button
-              size="icon"
-              variant="outline"
-              className="h-8 w-8 rounded-full border-zinc-700 bg-transparent text-zinc-400 hover:border-amber-400 hover:text-amber-200 disabled:opacity-60"
-              onClick={() => {
-                void refreshHistory();
-              }}
-              disabled={isLoadingHistory}
-            >
-              {isLoadingHistory ? (
-                <span className="text-[0.65rem]">…</span>
-              ) : (
-                <span className="text-xs">↻</span>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-full border-zinc-700 bg-transparent px-3 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-300 hover:border-amber-400 hover:bg-amber-500/10 hover:text-amber-50"
+                onClick={handleNewProject}
+              >
+                New
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-8 w-8 rounded-full border-zinc-700 bg-transparent text-zinc-400 hover:border-amber-400 hover:text-amber-200 disabled:opacity-60"
+                onClick={() => {
+                  void refreshHistory();
+                }}
+                disabled={isLoadingHistory}
+              >
+                {isLoadingHistory ? (
+                  <span className="text-[0.65rem]">…</span>
+                ) : (
+                  <span className="text-xs">↻</span>
+                )}
+              </Button>
+            </div>
           </div>
           {historyError && (
             <p className="mt-3 text-xs text-rose-400">{historyError}</p>
+          )}
+          {deleteError && (
+            <p className="mt-2 text-xs text-rose-400">{deleteError}</p>
           )}
           <div className="mt-4 space-y-1 overflow-y-auto pr-1 lg:max-h-[calc(100vh-10rem)]">
             {historyProjects.length === 0 && !isLoadingHistory ? (
@@ -1233,34 +1349,58 @@ const [scriptAudioGenerationTimeMs, setScriptAudioGenerationTimeMs] = useState<
                   project.title && project.title.trim().length > 0
                     ? project.title
                     : project.topic;
-                const subtitle = project.projectSlug ?? project.model;
+                const subtitle = project.model;
+                const isDeleting = isDeletingProjectId === project.id;
 
                 return (
-                  <button
+                  <div
                     key={project.id}
-                    type="button"
-                    onClick={() => {
-                      void handleSelectProject(project.id);
-                    }}
                     className={cn(
-                      "flex w-full flex-col items-start rounded-2xl border px-3 py-2 text-left text-xs transition",
+                      "group flex w-full items-center gap-2 rounded-2xl border px-3 py-2 text-left text-xs transition",
                       "border-zinc-800/80 bg-zinc-900/40 hover:border-amber-500/70 hover:bg-amber-500/5",
                       isActive &&
                         "border-amber-500/90 bg-amber-500/10 text-amber-50",
                     )}
                   >
-                    <span className="line-clamp-2 text-[0.8rem] font-medium">
-                      {title}
-                    </span>
-                    <span className="mt-0.5 text-[0.7rem] text-zinc-500">
-                      {subtitle}
-                    </span>
-                    {project.createdAt && (
-                      <span className="mt-0.5 text-[0.65rem] text-zinc-600">
-                        {new Date(project.createdAt).toLocaleString()}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleSelectProject(project.id);
+                      }}
+                      className="flex flex-1 flex-col items-start text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400/70"
+                    >
+                      <span className="line-clamp-2 text-[0.8rem] font-medium">
+                        {title}
                       </span>
-                    )}
-                  </button>
+                      <span className="mt-0.5 text-[0.7rem] text-zinc-500">
+                        {subtitle}
+                      </span>
+                      {project.createdAt && (
+                        <span className="mt-0.5 text-[0.65rem] text-zinc-600">
+                          {new Date(project.createdAt).toLocaleString()}
+                        </span>
+                      )}
+                    </button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      aria-label={`Delete project ${title}`}
+                      disabled={isDeleting}
+                      onClick={() => {
+                        void handleDeleteProject(project.id);
+                      }}
+                      className={cn(
+                        "flex-shrink-0 rounded-full px-2 py-1 text-sm text-zinc-500 opacity-0 transition-opacity duration-150 hover:bg-rose-500/20 hover:text-rose-100",
+                        "group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100",
+                        isDeleting && "text-rose-200",
+                        isActive && "text-amber-100 hover:bg-rose-500/20 hover:text-rose-100",
+                      )}
+                    >
+                      <span aria-hidden="true">{isDeleting ? "…" : "×"}</span>
+                      <span className="sr-only">Delete</span>
+                    </Button>
+                  </div>
                 );
               })
             )}

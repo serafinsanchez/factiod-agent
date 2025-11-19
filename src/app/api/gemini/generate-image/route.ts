@@ -24,13 +24,17 @@ export async function POST(request: Request) {
 
     const ai = new GoogleGenAI({ apiKey });
 
+    // Explicitly instruct the model to generate an image
+    const imagePrompt = `Generate an image: ${prompt}`;
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-image",
-      contents: prompt,
+      contents: imagePrompt,
       config: {
         imageConfig: {
           aspectRatio: "16:9",
         },
+        responseModalities: ["image"],
       },
     });
 
@@ -89,6 +93,17 @@ export async function POST(request: Request) {
 
         if (uploadError) {
           console.error("Supabase thumbnail upload error:", uploadError);
+          
+          // Provide helpful guidance for common storage errors
+          if (uploadError.statusCode === "404" || uploadError.message?.includes("Bucket not found")) {
+            console.error(
+              "\n⚠️  STORAGE SETUP REQUIRED:\n" +
+              "The 'projects' storage bucket doesn't exist in Supabase.\n" +
+              "Please run the migration: supabase/migrations/002_create_storage_bucket.sql\n" +
+              "OR manually create the bucket in Supabase Dashboard → Storage → New bucket → Name: 'projects' (public)\n" +
+              "See README.md for detailed setup instructions.\n"
+            );
+          }
         } else {
           thumbnailPath = path;
         }

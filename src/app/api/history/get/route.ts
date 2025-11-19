@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  getSupabaseServerClient,
+  getSchemaCacheErrorMessage,
+} from "@/lib/supabase/server";
 import type { PipelineState } from "@/types/agent";
 
 function isPipelineState(value: unknown): value is PipelineState {
@@ -49,8 +52,12 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error("Supabase error while loading project:", error);
+      const schemaCacheError = getSchemaCacheErrorMessage(error);
       return NextResponse.json(
-        { error: "Failed to load project." },
+        {
+          error: schemaCacheError || "Failed to load project.",
+          details: schemaCacheError ? undefined : error.message,
+        },
         { status: 500 },
       );
     }

@@ -34,12 +34,22 @@ Create a `.env.local` file with the required API keys:
 
 The app stores project history (one project per video) and media assets (script, audio, thumbnail) in Supabase.
 
+> **Project history behavior:** Every click of **Save Project** inserts a brand-new row in the `projects` table, even if you reuse the same topic. This guarantees the sidebar shows every past run. Projects that were overwritten by the previous upsert behavior can’t be automatically restored, but all future saves will be preserved as separate entries.
+
 ### Database schema (`projects` table)
 
-Create a `projects` table to store full pipeline snapshots and asset paths:
+**Step 1: Create the table**
+
+Run the migration SQL file in your Supabase SQL Editor:
+
+1. Go to your Supabase Dashboard → SQL Editor
+2. Copy and paste the contents of `supabase/migrations/001_create_projects_table.sql`
+3. Click "Run" to execute the migration
+
+Alternatively, you can run the SQL directly:
 
 ```sql
-create table public.projects (
+create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
@@ -56,13 +66,46 @@ create table public.projects (
 
   pipeline jsonb not null
 );
+
+create index if not exists idx_projects_created_at on public.projects(created_at desc);
+create index if not exists idx_projects_project_slug on public.projects(project_slug);
 ```
 
-Row Level Security can be enabled later and tied to a `user_id` column when you add authentication. For now you can keep RLS disabled or add permissive policies for development.
+**Step 2: Refresh the schema cache**
+
+After creating the table, you **must** refresh Supabase's schema cache:
+
+1. Go to Supabase Dashboard → Settings → API
+2. Scroll down to find "Schema Cache"
+3. Click **"Rebuild Schema Cache"** or **"Reload Schema"**
+
+This is critical! Without refreshing the cache, you'll see `PGRST205` errors saying the table can't be found, even though it exists.
+
+**Note:** Row Level Security can be enabled later and tied to a `user_id` column when you add authentication. For now you can keep RLS disabled or add permissive policies for development.
 
 ### Storage bucket structure
 
-Create a Supabase Storage bucket named `projects`. Each saved project gets its own folder:
+**Step 1: Create the storage bucket**
+
+Run the storage migration SQL file in your Supabase SQL Editor:
+
+1. Go to your Supabase Dashboard → SQL Editor
+2. Copy and paste the contents of `supabase/migrations/002_create_storage_bucket.sql`
+3. Click "Run" to execute the migration
+
+This will create a public storage bucket named `projects` with appropriate access policies.
+
+Alternatively, you can manually create the bucket:
+
+1. Go to Supabase Dashboard → Storage
+2. Click "New bucket"
+3. Name it `projects`
+4. Set it to **Public** (so generated assets can be accessed via URL)
+5. Click "Create bucket"
+
+**Folder structure:**
+
+Each saved project gets its own folder:
 
 - Folder: `projects/<project_slug>/`
   - `projects/<project_slug>/<project_slug>.md` – full script as markdown.

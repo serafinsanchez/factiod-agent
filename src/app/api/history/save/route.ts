@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  getSupabaseServerClient,
+  getSchemaCacheErrorMessage,
+} from "@/lib/supabase/server";
 import {
   PROJECTS_BUCKET,
   buildProjectScriptPath,
@@ -65,6 +68,12 @@ export async function POST(request: Request) {
   let scriptPath: string | undefined =
     incomingPipeline.scriptPath || undefined;
 
+  const pipelineId =
+    typeof incomingPipeline.id === "string" &&
+    incomingPipeline.id.trim().length > 0
+      ? incomingPipeline.id
+      : undefined;
+
   try {
     const supabase = getSupabaseServerClient();
 
@@ -82,6 +91,17 @@ export async function POST(request: Request) {
         console.error("Failed to upload project script to Supabase:", {
           error: uploadError,
         });
+        
+        // Provide helpful guidance for common storage errors
+        if (uploadError.statusCode === "404" || uploadError.message?.includes("Bucket not found")) {
+          console.error(
+            "\n⚠️  STORAGE SETUP REQUIRED:\n" +
+            "The 'projects' storage bucket doesn't exist in Supabase.\n" +
+            "Please run the migration: supabase/migrations/002_create_storage_bucket.sql\n" +
+            "OR manually create the bucket in Supabase Dashboard → Storage → New bucket → Name: 'projects' (public)\n" +
+            "See README.md for detailed setup instructions.\n"
+          );
+        }
       } else {
         scriptPath = path;
       }
@@ -90,44 +110,61 @@ export async function POST(request: Request) {
     const audioPath = incomingPipeline.audioPath ?? null;
     const thumbnailPath = incomingPipeline.thumbnailPath ?? null;
 
+    const resolvedScriptPathForPayload =
+      scriptPath ?? incomingPipeline.scriptPath ?? null;
+
     const upsertPayload: Record<string, unknown> = {
-      id: incomingPipeline.id ?? undefined,
       topic: incomingPipeline.topic,
       model: incomingPipeline.model,
       title: incomingPipeline.title ?? null,
       description: incomingPipeline.description ?? null,
       project_slug: projectSlug,
-      script_path: scriptPath ?? null,
+      script_path: resolvedScriptPathForPayload,
       audio_path: audioPath,
       thumbnail_path: thumbnailPath,
+      updated_at: new Date().toISOString(),
       pipeline: {
         ...incomingPipeline,
+        id: pipelineId ?? incomingPipeline.id,
         projectSlug,
-        scriptPath: scriptPath ?? incomingPipeline.scriptPath,
-        audioPath,
-        thumbnailPath,
+        scriptPath: resolvedScriptPathForPayload ?? undefined,
+        audioPath: audioPath ?? undefined,
+        thumbnailPath: thumbnailPath ?? undefined,
       },
     };
 
+    if (pipelineId) {
+      upsertPayload.id = pipelineId;
+    }
+
     const { data, error } = await supabase
       .from("projects")
-      .upsert(upsertPayload)
+      .upsert(upsertPayload, { onConflict: "id" })
       .select()
       .single();
 
     if (error) {
       console.error("Supabase upsert error while saving project:", error);
+      const schemaCacheError = getSchemaCacheErrorMessage(error);
       return NextResponse.json(
-        { error: "Failed to save project." },
+        {
+          error: schemaCacheError || "Failed to save project.",
+          details: schemaCacheError ? undefined : error.message,
+        },
         { status: 500 },
       );
     }
+
+    const resolvedScriptPath =
+      (data.script_path as string | null) ??
+      scriptPath ??
+      incomingPipeline.scriptPath;
 
     const persistedPipeline: PipelineState = {
       ...incomingPipeline,
       id: String(data.id),
       projectSlug,
-      scriptPath: (data.script_path as string | null) ?? scriptPath,
+      scriptPath: resolvedScriptPath ?? undefined,
       audioPath: (data.audio_path as string | null) ?? audioPath ?? undefined,
       thumbnailPath:
         (data.thumbnail_path as string | null) ?? thumbnailPath ?? undefined,

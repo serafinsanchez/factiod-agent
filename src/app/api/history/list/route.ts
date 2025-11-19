@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  getSupabaseServerClient,
+  getSchemaCacheErrorMessage,
+} from "@/lib/supabase/server";
 import type { ModelId } from "@/types/agent";
 
 type ProjectRow = {
@@ -24,8 +27,12 @@ export async function GET() {
 
     if (error) {
       console.error("Supabase error while listing projects:", error);
+      const schemaCacheError = getSchemaCacheErrorMessage(error);
       return NextResponse.json(
-        { error: "Failed to load projects." },
+        {
+          error: schemaCacheError || "Failed to load projects.",
+          details: schemaCacheError ? undefined : error.message,
+        },
         { status: 500 },
       );
     }
