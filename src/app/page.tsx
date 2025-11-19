@@ -219,6 +219,9 @@ export default function HomePage() {
   const [isGeneratingScriptAudio, setIsGeneratingScriptAudio] = useState(false);
   const [scriptAudioUrl, setScriptAudioUrl] = useState<string | null>(null);
   const [scriptAudioError, setScriptAudioError] = useState<string | null>(null);
+const [scriptAudioGenerationTimeMs, setScriptAudioGenerationTimeMs] = useState<
+  number | null
+>(null);
 
   const [isGeneratingThumbnail, setIsGeneratingThumbnail] = useState(false);
   const [thumbnailImage, setThumbnailImage] = useState<{
@@ -257,6 +260,15 @@ export default function HomePage() {
     }),
     [pipeline],
   );
+
+  const totalGenerationDurationMs = useMemo(() => {
+    const stepStates = pipeline.steps
+      ? Object.values(pipeline.steps)
+      : ([] as StepRunState[]);
+    return stepStates.reduce((sum, step) => {
+      return sum + (step.metrics?.durationMs ?? 0);
+    }, 0);
+  }, [pipeline.steps]);
 
   const refreshHistory = useCallback(async () => {
     setIsLoadingHistory(true);
@@ -322,6 +334,7 @@ export default function HomePage() {
 
   useEffect(() => {
     setScriptAudioError(null);
+    setScriptAudioGenerationTimeMs(null);
     setScriptAudioUrl((prev) => {
       if (prev && prev.startsWith("blob:")) {
         URL.revokeObjectURL(prev);
@@ -348,6 +361,10 @@ export default function HomePage() {
     Boolean(pipeline.thumbnailPrompt?.trim());
 
   const hasScript = Boolean(pipeline.videoScript?.trim());
+  const hasRuntimeMetrics =
+    totalGenerationDurationMs > 0 ||
+    scriptAudioGenerationTimeMs !== null ||
+    thumbnailGenerationTime !== null;
   const videoScriptStats = useMemo(() => {
     const raw = pipeline.videoScript;
     if (typeof raw !== "string") {
@@ -377,6 +394,7 @@ export default function HomePage() {
       }
       return null;
     });
+    setScriptAudioGenerationTimeMs(null);
 
     const projectSlug = getOrCreateProjectSlug(
       pipeline.projectSlug,
@@ -389,6 +407,8 @@ export default function HomePage() {
       projectSlug,
       audioPath,
     }));
+
+    const startTime = performance.now();
 
     try {
       const response = await fetch("/api/tts/generate", {
@@ -425,6 +445,7 @@ export default function HomePage() {
       const blob = await response.blob();
       const objectUrl = URL.createObjectURL(blob);
       setScriptAudioUrl(objectUrl);
+      setScriptAudioGenerationTimeMs(performance.now() - startTime);
     } catch (error) {
       const message =
         error instanceof Error
@@ -1316,6 +1337,39 @@ export default function HomePage() {
                 <div className="text-sm text-amber-300">
                   ${pipeline.totalCostUsd.toFixed(3)}
                 </div>
+                {hasRuntimeMetrics && (
+                  <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/40 p-3 text-sm text-zinc-100">
+                    <span className="text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-zinc-500">
+                      Runtime
+                    </span>
+                    <div className="mt-2 space-y-1">
+                      {totalGenerationDurationMs > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span>LLM generation</span>
+                          <span className="font-semibold">
+                            {(totalGenerationDurationMs / 1000).toFixed(1)}s
+                          </span>
+                        </div>
+                      )}
+                      {scriptAudioGenerationTimeMs !== null && (
+                        <div className="flex items-center justify-between">
+                          <span>Audio</span>
+                          <span className="font-semibold">
+                            {(scriptAudioGenerationTimeMs / 1000).toFixed(1)}s
+                          </span>
+                        </div>
+                      )}
+                      {thumbnailGenerationTime !== null && (
+                        <div className="flex items-center justify-between">
+                          <span>Thumbnail</span>
+                          <span className="font-semibold">
+                            {(thumbnailGenerationTime / 1000).toFixed(1)}s
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div className="mt-1 flex flex-col gap-2">
                   <Button
                     className="w-full rounded-xl bg-amber-500/90 text-black shadow hover:bg-amber-500 disabled:opacity-60"
