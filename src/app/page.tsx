@@ -213,8 +213,8 @@ export default function HomePage() {
     () => createInitialPipeline(),
   );
   const [promptOverrides, setPromptOverrides] = useState<
-    Record<StepId, string | undefined>
-  >(() => ({} as Record<StepId, string | undefined>));
+    Partial<Record<StepId, string | undefined>>
+  >({});
   const [isRunningAll, setIsRunningAll] = useState(false);
   const [isGeneratingScriptAudio, setIsGeneratingScriptAudio] = useState(false);
   const [scriptAudioUrl, setScriptAudioUrl] = useState<string | null>(null);
