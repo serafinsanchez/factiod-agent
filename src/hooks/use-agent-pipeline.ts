@@ -28,7 +28,7 @@ type ThumbnailImage =
     }
   | null;
 
-type PromptOverrides = Record<StepId, string | undefined>;
+type PromptOverrides = Partial<Record<StepId, string>>;
 
 function createInitialSteps(): Record<StepId, StepRunState> {
   return STEP_CONFIGS.reduce(
