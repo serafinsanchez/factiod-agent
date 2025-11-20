@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { runStep } from '../../../../../lib/agent/runStep';
+import { extractFinalScript } from '../../../../../lib/agent/scriptQA';
 import { STEP_CONFIGS } from '../../../../../lib/agent/steps';
 import { interpolatePrompt } from '../../../../../lib/agent/interpolate';
 import { normalizeModelId } from '../../../../../lib/llm/models';
@@ -24,7 +25,9 @@ const STEP_IDS: StepId[] = [
   'hook',
   'quizzes',
   'script',
+  'scriptQA',
   'narrationClean',
+  'narrationAudioTags',
   'titleDescription',
   'thumbnail',
 ];
@@ -149,6 +152,10 @@ async function runPipelineStep(
     producedVariables = {
       Title: firstLine.trim(),
       Description: rest.join('\n').trim(),
+    };
+  } else if (step.id === 'scriptQA') {
+    producedVariables = {
+      VideoScript: extractFinalScript(result.responseText),
     };
   }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { runStep } from '../../../../../lib/agent/runStep';
+import { extractFinalScript } from '../../../../../lib/agent/scriptQA';
 import { getStepConfig } from '../../../../../lib/agent/steps';
 import { normalizeModelId } from '../../../../../lib/llm/models';
 import type { ModelId, StepId } from '../../../../../types/agent';
@@ -26,7 +27,9 @@ const STEP_IDS: StepId[] = [
   'hook',
   'quizzes',
   'script',
+  'scriptQA',
   'narrationClean',
+  'narrationAudioTags',
   'titleDescription',
   'thumbnail',
 ];
@@ -138,6 +141,10 @@ export async function POST(request: Request) {
       producedVariables = {
         Title: title,
         Description: description,
+      };
+    } else if (stepId === 'scriptQA') {
+      producedVariables = {
+        VideoScript: extractFinalScript(responseText),
       };
     }
 

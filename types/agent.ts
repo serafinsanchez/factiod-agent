@@ -5,6 +5,7 @@ export type StepId =
   | 'hook'
   | 'quizzes'
   | 'script'
+  | 'scriptQA'
   | 'narrationClean'
   | 'narrationAudioTags'
   | 'titleDescription'

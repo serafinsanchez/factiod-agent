@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +59,19 @@ export function StepEditor({
   onResetPrompt,
 }: StepEditorProps) {
   const [showAdvancedPrompt, setShowAdvancedPrompt] = useState(false);
+
+  const finalScriptStats = useMemo(() => {
+    if (stepConfig.id !== "scriptQA") {
+      return null;
+    }
+    const text = sharedVars.videoScript?.trim();
+    if (!text) {
+      return null;
+    }
+    const words = text.split(/\s+/).filter(Boolean).length;
+    const characters = text.length;
+    return { words, characters };
+  }, [sharedVars.videoScript, stepConfig.id]);
 
   const missingVars = stepConfig.inputVars.filter((variable) => {
     const sharedKey = VARIABLE_MAP[variable];
@@ -226,6 +239,21 @@ export function StepEditor({
                   : stepState.responseText || "Awaiting run…"}
             </div>
           </div>
+
+          {finalScriptStats && (
+            <div className="rounded-2xl border border-white/20 bg-white/5 p-4">
+              <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-white/80">
+                Final script stats
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <MetricTile label="Word count" value={finalScriptStats.words.toLocaleString()} />
+                <MetricTile label="Character count" value={finalScriptStats.characters.toLocaleString()} />
+              </div>
+              <p className="mt-2 text-xs text-white/80">
+                Counts include the QA-improved script only (checklist excluded).
+              </p>
+            </div>
+          )}
 
           {stepState.metrics && (
             <div className="grid gap-3 sm:grid-cols-2">

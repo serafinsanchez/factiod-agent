@@ -86,7 +86,7 @@ Silently think about your choices and evaluate them for pedagogical importance a
     outputVars: ['VideoScript'],
     promptTemplate: `You are an expert at scripting educational kids videos. You have great pedagogical skills and you know how to make things engaging for elementary aged kids. I already wrote the video topic, key concepts, and the hook for the video. I also wrote two quiz questions that I want to interject in the video. We will pause the video and ask the quiz questions. That way we know the kid is engaged to the video instead of just watching like a zombie. 
 
-You are going to write a video script for me that uses best practices for engaging kids videos. It's important that this video matches pedagogical standards but it's even more important that it's fun and engaging for kids. Video length should be 10 minutes so lets make it about at least 1600 words. Silently review the script for kid engagement and ease of narration before finalizing the script. 
+You are going to write a video script for me that uses best practices for engaging kids videos. It's important that this video matches pedagogical standards but it's even more important that it's fun and engaging for kids. A 10-minute narration should be roughly 1,400 to 1,500 words, so keep the final script under 1,600 words. Silently review the script for kid engagement and ease of narration before finalizing the script. 
 
 The script that you write will be written verbatim by a narrator. Include lots of punctuation to help the narrator read your script. Output only an engaging kids script and nothing else. My channel is called PIP academy and you can reference that name. 
 
@@ -101,6 +101,44 @@ Here are the quiz questions and answers
 — [QuizInfo] —
 
 Include the hook at the top of the script when you output the script. Don't do any cheesy greetings.`,
+  },
+  {
+    id: 'scriptQA',
+    label: 'Prompt 4d – Script QA',
+    defaultModel: DEFAULT_MODEL_ID,
+    inputVars: ['VideoScript'],
+    outputVars: ['VideoScript'],
+    promptTemplate: `You are a quality assurance editor for PIP Academy's educational kids videos. The audience is elementary kids aged 5-9. Review the narrator-ready script below and ensure it meets our standards.
+
+Here is the script to review:
+— [VideoScript] —
+
+Perform the following checks:
+
+1. LENGTH CHECK
+Ensure the final script stays under 1,600 words (≈10 minutes). If it is longer, you MUST rewrite, consolidate, and tighten until the final draft is safely under 1,600 words (target 1,350–1,500). Do not mark this check as ✅ until the final script meets the requirement.
+
+2. FACT CHECK
+Verify all facts, numbers, and claims. If you find anything incorrect or risky, silently fix it with accurate grade 2-3 appropriate language.
+
+3. TONE & AUDIENCE CHECK
+Keep the language simple, concrete, kid-friendly (Grade 2-3 level). Maintain positive, curious energy without being condescending or scary.
+
+Process (think silently, do not show):
+1. Count words and note if trimming is needed.
+2. Fact-check every claim and fix issues quietly.
+3. Adjust tone and pacing for comprehension.
+4. If the script is still over 1,600 words, continue compressing ideas (merge sentences, trim repetition, keep quizzes) and re-check counts before moving on.
+5. Polish the final narration for natural reading.
+
+Output format (strict):
+Checklist:
+LENGTH: (✅ or ❌) include the final word count and note any trimming performed.
+FACTS: (✅ or ❌) one short sentence about the decision.
+TONE: (✅ or ❌) one short sentence about the decision.
+
+Final Script:
+<Return only the improved script text here, no brackets or commentary. This must be the exact version future steps use.>`,
   },
   {
     id: 'narrationClean',

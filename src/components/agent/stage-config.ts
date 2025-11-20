@@ -19,8 +19,8 @@ export const STAGES: StageDefinition[] = [
   {
     id: "script",
     label: "Stage 2 – Script & Narration",
-    description: "Generate the long-form script and clean narration.",
-    steps: ["script"],
+    description: "Generate the script, run QA, and clean narration.",
+    steps: ["script", "scriptQA"],
   },
   {
     id: "publish",

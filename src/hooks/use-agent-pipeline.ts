@@ -478,210 +478,335 @@ export function useAgentPipeline() {
           return nextPipeline;
         });
 
-        if (stepId === "script" && producedVariables.VideoScript) {
-          const narrationCleanConfig = STEP_CONFIGS.find(
+        const runNarrationPipeline = async (videoScriptText: string) => {
+          const hasNarrationCleanStep = STEP_CONFIGS.some(
             (config) => config.id === "narrationClean",
           );
-          if (narrationCleanConfig) {
-            setPipeline((prev) => ({
-              ...prev,
-              steps: {
-                ...prev.steps,
-                narrationClean: {
-                  ...prev.steps.narrationClean,
-                  status: "running",
-                  errorMessage: undefined,
-                },
-                narrationAudioTags: {
-                  ...prev.steps.narrationAudioTags,
-                  status: "idle",
-                  errorMessage: undefined,
-                },
-              },
-            }));
+          if (!hasNarrationCleanStep) {
+            return;
+          }
 
-            try {
-              const narrationResponse = await fetch("/api/agent/run-step", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
+          setPipeline((prev) => ({
+            ...prev,
+            steps: {
+              ...prev.steps,
+              narrationClean: {
+                ...prev.steps.narrationClean,
+                status: "running",
+                errorMessage: undefined,
+              },
+              narrationAudioTags: {
+                ...prev.steps.narrationAudioTags,
+                status: "idle",
+                errorMessage: undefined,
+              },
+            },
+          }));
+
+          try {
+            const narrationResponse = await fetch("/api/agent/run-step", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                stepId: "narrationClean",
+                model: currentModel,
+                topic: currentTopic,
+                variables: {
+                  VideoScript: videoScriptText,
                 },
-                body: JSON.stringify({
-                  stepId: "narrationClean",
-                  model: currentModel,
-                  topic: currentTopic,
-                  variables: {
-                    VideoScript: producedVariables.VideoScript,
+              }),
+            });
+
+            const narrationData = await narrationResponse.json();
+            if (narrationResponse.ok && !narrationData?.error) {
+              const narrationProducedVariables: Record<string, string> =
+                narrationData.producedVariables ?? {};
+              const narrationScriptText =
+                narrationProducedVariables.NarrationScript ??
+                narrationData.responseText ??
+                "";
+
+              setPipeline((prev) => {
+                const updatedSteps = {
+                  ...prev.steps,
+                  narrationClean: {
+                    ...prev.steps.narrationClean,
+                    resolvedPrompt: narrationData.resolvedPrompt ?? "",
+                    responseText: narrationData.responseText ?? "",
+                    status: "success" as const,
+                    metrics: narrationData.metrics,
+                    errorMessage: undefined,
                   },
-                }),
+                };
+
+                const nextPipeline: PipelineState = {
+                  ...prev,
+                  steps: updatedSteps,
+                };
+
+                for (const [key, value] of Object.entries(narrationProducedVariables)) {
+                  const field = PRODUCED_VARIABLE_TO_PIPELINE_FIELD[key as VariableKey];
+                  if (field) {
+                    nextPipeline[field] = value;
+                  }
+                }
+
+                nextPipeline.totalTokens = Object.values(updatedSteps).reduce(
+                  (sum, step) => sum + (step.metrics?.totalTokens ?? 0),
+                  0,
+                );
+                nextPipeline.totalCostUsd = Object.values(updatedSteps).reduce(
+                  (sum, step) => sum + (step.metrics?.costUsd ?? 0),
+                  0,
+                );
+
+                return nextPipeline;
               });
 
-              const narrationData = await narrationResponse.json();
-              if (narrationResponse.ok && !narrationData?.error) {
-                const narrationProducedVariables: Record<string, string> =
-                  narrationData.producedVariables ?? {};
-                const narrationScriptText =
-                  narrationProducedVariables.NarrationScript ??
-                  narrationData.responseText ??
-                  "";
-
-                setPipeline((prev) => {
-                  const updatedSteps = {
+              if (narrationScriptText.trim().length > 0) {
+                setPipeline((prev) => ({
+                  ...prev,
+                  steps: {
                     ...prev.steps,
-                    narrationClean: {
-                      ...prev.steps.narrationClean,
-                      resolvedPrompt: narrationData.resolvedPrompt ?? "",
-                      responseText: narrationData.responseText ?? "",
-                      status: "success" as const,
-                      metrics: narrationData.metrics,
+                    narrationAudioTags: {
+                      ...prev.steps.narrationAudioTags,
+                      status: "running",
                       errorMessage: undefined,
                     },
-                  };
+                  },
+                }));
 
-                  const nextPipeline: PipelineState = {
-                    ...prev,
-                    steps: updatedSteps,
-                  };
+                try {
+                  const audioTagResponse = await fetch("/api/agent/run-step", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      stepId: "narrationAudioTags",
+                      model: currentModel,
+                      topic: currentTopic,
+                      variables: {
+                        NarrationScript: narrationScriptText,
+                      },
+                    }),
+                  });
 
-                  for (const [key, value] of Object.entries(narrationProducedVariables)) {
-                    const field = PRODUCED_VARIABLE_TO_PIPELINE_FIELD[key as VariableKey];
-                    if (field) {
-                      nextPipeline[field] = value;
-                    }
+                  const audioTagData = await audioTagResponse.json();
+                  if (audioTagResponse.ok && !audioTagData?.error) {
+                    setPipeline((prev) => {
+                      const audioTagProducedVariables: Record<string, string> =
+                        audioTagData.producedVariables ?? {};
+
+                      const updatedSteps = {
+                        ...prev.steps,
+                        narrationAudioTags: {
+                          ...prev.steps.narrationAudioTags,
+                          resolvedPrompt: audioTagData.resolvedPrompt ?? "",
+                          responseText: audioTagData.responseText ?? "",
+                          status: "success" as const,
+                          metrics: audioTagData.metrics,
+                          errorMessage: undefined,
+                        },
+                      };
+
+                      const nextPipeline: PipelineState = {
+                        ...prev,
+                        steps: updatedSteps,
+                      };
+
+                      for (const [key, value] of Object.entries(
+                        audioTagProducedVariables,
+                      )) {
+                        const field =
+                          PRODUCED_VARIABLE_TO_PIPELINE_FIELD[key as VariableKey];
+                        if (field) {
+                          nextPipeline[field] = value;
+                        }
+                      }
+
+                      nextPipeline.totalTokens = Object.values(updatedSteps).reduce(
+                        (sum, step) => sum + (step.metrics?.totalTokens ?? 0),
+                        0,
+                      );
+                      nextPipeline.totalCostUsd = Object.values(updatedSteps).reduce(
+                        (sum, step) => sum + (step.metrics?.costUsd ?? 0),
+                        0,
+                      );
+
+                      return nextPipeline;
+                    });
+                  } else {
+                    throw new Error(
+                      audioTagData?.error || "Failed to run narration audio tag step",
+                    );
                   }
-
-                  nextPipeline.totalTokens = Object.values(updatedSteps).reduce(
-                    (sum, step) => sum + (step.metrics?.totalTokens ?? 0),
-                    0,
-                  );
-                  nextPipeline.totalCostUsd = Object.values(updatedSteps).reduce(
-                    (sum, step) => sum + (step.metrics?.costUsd ?? 0),
-                    0,
-                  );
-
-                  return nextPipeline;
-                });
-
-                if (narrationScriptText.trim().length > 0) {
+                } catch (audioTagError) {
+                  const message =
+                    audioTagError instanceof Error
+                      ? audioTagError.message
+                      : "Failed to run narration audio tag step.";
                   setPipeline((prev) => ({
                     ...prev,
                     steps: {
                       ...prev.steps,
                       narrationAudioTags: {
                         ...prev.steps.narrationAudioTags,
-                        status: "running",
-                        errorMessage: undefined,
+                        status: "error",
+                        errorMessage: message,
                       },
                     },
                   }));
-
-                  try {
-                    const audioTagResponse = await fetch("/api/agent/run-step", {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                      },
-                      body: JSON.stringify({
-                        stepId: "narrationAudioTags",
-                        model: currentModel,
-                        topic: currentTopic,
-                        variables: {
-                          NarrationScript: narrationScriptText,
-                        },
-                      }),
-                    });
-
-                    const audioTagData = await audioTagResponse.json();
-                    if (audioTagResponse.ok && !audioTagData?.error) {
-                      setPipeline((prev) => {
-                        const audioTagProducedVariables: Record<string, string> =
-                          audioTagData.producedVariables ?? {};
-
-                        const updatedSteps = {
-                          ...prev.steps,
-                          narrationAudioTags: {
-                            ...prev.steps.narrationAudioTags,
-                            resolvedPrompt: audioTagData.resolvedPrompt ?? "",
-                            responseText: audioTagData.responseText ?? "",
-                            status: "success" as const,
-                            metrics: audioTagData.metrics,
-                            errorMessage: undefined,
-                          },
-                        };
-
-                        const nextPipeline: PipelineState = {
-                          ...prev,
-                          steps: updatedSteps,
-                        };
-
-                        for (const [key, value] of Object.entries(
-                          audioTagProducedVariables,
-                        )) {
-                          const field =
-                            PRODUCED_VARIABLE_TO_PIPELINE_FIELD[key as VariableKey];
-                          if (field) {
-                            nextPipeline[field] = value;
-                          }
-                        }
-
-                        nextPipeline.totalTokens = Object.values(updatedSteps).reduce(
-                          (sum, step) => sum + (step.metrics?.totalTokens ?? 0),
-                          0,
-                        );
-                        nextPipeline.totalCostUsd = Object.values(updatedSteps).reduce(
-                          (sum, step) => sum + (step.metrics?.costUsd ?? 0),
-                          0,
-                        );
-
-                        return nextPipeline;
-                      });
-                    } else {
-                      throw new Error(
-                        audioTagData?.error ||
-                          "Failed to run narration audio tag step",
-                      );
-                    }
-                  } catch (audioTagError) {
-                    const message =
-                      audioTagError instanceof Error
-                        ? audioTagError.message
-                        : "Failed to run narration audio tag step.";
-                    setPipeline((prev) => ({
-                      ...prev,
-                      steps: {
-                        ...prev.steps,
-                        narrationAudioTags: {
-                          ...prev.steps.narrationAudioTags,
-                          status: "error",
-                          errorMessage: message,
-                        },
-                      },
-                    }));
-                  }
                 }
-              } else {
-                throw new Error(
-                  narrationData?.error || "Failed to run narration cleaning step",
-                );
               }
-            } catch (narrationError) {
-              const message =
-                narrationError instanceof Error
-                  ? narrationError.message
-                  : "Failed to run narration cleaning step.";
-              setPipeline((prev) => ({
-                ...prev,
-                steps: {
-                  ...prev.steps,
-                  narrationClean: {
-                    ...prev.steps.narrationClean,
-                    status: "error",
-                    errorMessage: message,
-                  },
+            } else {
+              throw new Error(
+                narrationData?.error || "Failed to run narration cleaning step",
+              );
+            }
+          } catch (narrationError) {
+            const message =
+              narrationError instanceof Error
+                ? narrationError.message
+                : "Failed to run narration cleaning step.";
+            setPipeline((prev) => ({
+              ...prev,
+              steps: {
+                ...prev.steps,
+                narrationClean: {
+                  ...prev.steps.narrationClean,
+                  status: "error",
+                  errorMessage: message,
                 },
-              }));
+              },
+            }));
+          }
+        };
+
+        const runScriptQaStep = async (videoScriptText: string) => {
+          const trimmedScript = videoScriptText?.trim();
+          if (!trimmedScript) {
+            return;
+          }
+
+          const hasScriptQaStep = STEP_CONFIGS.some((config) => config.id === "scriptQA");
+          if (!hasScriptQaStep) {
+            return;
+          }
+
+          setPipeline((prev) => ({
+            ...prev,
+            steps: {
+              ...prev.steps,
+              scriptQA: {
+                ...prev.steps.scriptQA,
+                status: "running",
+                errorMessage: undefined,
+              },
+            },
+          }));
+
+          try {
+            const qaResponse = await fetch("/api/agent/run-step", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                stepId: "scriptQA",
+                model: currentModel,
+                topic: currentTopic,
+                variables: {
+                  VideoScript: trimmedScript,
+                },
+                promptTemplateOverride: promptOverrides.scriptQA,
+              }),
+            });
+
+            const qaData = await qaResponse.json();
+            if (!qaResponse.ok || qaData?.error) {
+              const message =
+                (typeof qaData?.error === "string" && qaData.error) ||
+                `Failed to run script QA step (status ${qaResponse.status}).`;
+              throw new Error(message);
+            }
+
+            const qaProducedVariables: Record<string, string> =
+              qaData.producedVariables ?? {};
+            const finalScript =
+              qaProducedVariables.VideoScript ??
+              qaData.responseText ??
+              trimmedScript;
+
+            setPipeline((prev) => {
+              const updatedSteps = {
+                ...prev.steps,
+                scriptQA: {
+                  ...prev.steps.scriptQA,
+                  resolvedPrompt: qaData.resolvedPrompt ?? "",
+                  responseText: qaData.responseText ?? "",
+                  status: "success" as const,
+                  metrics: qaData.metrics,
+                  errorMessage: undefined,
+                },
+              };
+
+              const nextPipeline: PipelineState = {
+                ...prev,
+                steps: updatedSteps,
+              };
+
+              for (const [key, value] of Object.entries(qaProducedVariables)) {
+                const field = PRODUCED_VARIABLE_TO_PIPELINE_FIELD[key as VariableKey];
+                if (field) {
+                  nextPipeline[field] = value;
+                }
+              }
+
+              nextPipeline.totalTokens = Object.values(updatedSteps).reduce(
+                (sum, step) => sum + (step.metrics?.totalTokens ?? 0),
+                0,
+              );
+              nextPipeline.totalCostUsd = Object.values(updatedSteps).reduce(
+                (sum, step) => sum + (step.metrics?.costUsd ?? 0),
+                0,
+              );
+
+              return nextPipeline;
+            });
+
+            if (finalScript.trim().length > 0) {
+              await runNarrationPipeline(finalScript);
+            }
+          } catch (qaError) {
+            const message =
+              qaError instanceof Error ? qaError.message : "Failed to run script QA step.";
+            setPipeline((prev) => ({
+              ...prev,
+              steps: {
+                ...prev.steps,
+                scriptQA: {
+                  ...prev.steps.scriptQA,
+                  status: "error",
+                  errorMessage: message,
+                },
+              },
+            }));
+
+            if (trimmedScript.length > 0) {
+              await runNarrationPipeline(trimmedScript);
             }
           }
+        };
+
+        if (producedVariables.VideoScript && stepId === "scriptQA") {
+          await runNarrationPipeline(producedVariables.VideoScript);
+        }
+
+        if (producedVariables.VideoScript && stepId === "script") {
+          await runScriptQaStep(producedVariables.VideoScript);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to run step.";
