@@ -1,6 +1,7 @@
 import { chunkForElevenV3 } from '@/lib/tts/chunkText';
 import { toNarrationOnly } from '@/lib/tts/cleanNarration';
 import {
+  ELEVEN_MULTILINGUAL_V2_MAX_CHARS,
   ELEVEN_V3_SAFE_CHARS,
   generateTtsAudio,
   type TtsOptions,
@@ -74,14 +75,19 @@ export async function generateNarrationMultiChunk(
   options: TtsOptions = {},
 ): Promise<Buffer> {
   const narrationText = toNarrationOnly(rawScript);
-  const chunks = chunkForElevenV3(narrationText, ELEVEN_V3_SAFE_CHARS);
+  const targetModel = options.modelId ?? 'eleven_v3';
+  const chunkLimit =
+    targetModel === 'eleven_multilingual_v2'
+      ? ELEVEN_MULTILINGUAL_V2_MAX_CHARS
+      : ELEVEN_V3_SAFE_CHARS;
+  const chunks = chunkForElevenV3(narrationText, chunkLimit);
 
   if (chunks.length === 0) {
     throw new Error('No narration text available for TTS.');
   }
 
   console.log(
-    `[TTS] ElevenLabs v3 chunking → ${chunks.length} chunk(s)`,
+    `[TTS] ElevenLabs ${targetModel} chunking → ${chunks.length} chunk(s)`,
     chunks.map((chunk) => chunk.length),
   );
 

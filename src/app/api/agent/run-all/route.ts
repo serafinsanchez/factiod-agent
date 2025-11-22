@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { runStep } from '../../../../../lib/agent/runStep';
-import { extractFinalScript } from '../../../../../lib/agent/scriptQA';
+import { extractFinalScript, runScriptQaWithWordGoal } from '../../../../../lib/agent/scriptQA';
 import { STEP_CONFIGS } from '../../../../../lib/agent/steps';
 import { interpolatePrompt } from '../../../../../lib/agent/interpolate';
 import { normalizeModelId } from '../../../../../lib/llm/models';
@@ -137,7 +137,9 @@ async function runPipelineStep(
   variables: Record<string, string>,
   override?: string,
 ) {
-  const result = await runStep({
+  const runner = step.id === 'scriptQA' ? runScriptQaWithWordGoal : runStep;
+
+  const result = await runner({
     step,
     model,
     topic,
@@ -192,6 +194,9 @@ export async function POST(request: Request) {
     };
 
     for (const step of STEP_CONFIGS) {
+      if (step.id === 'narrationAudio') {
+        continue;
+      }
       const override = promptTemplateOverrides?.[step.id];
 
       let stepResult;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { STEP_CONFIGS } from "@/lib/agent/steps";
 import { DEFAULT_MODEL_ID, normalizeModelId } from "@/lib/llm/models";
@@ -14,11 +14,13 @@ import {
 import type {
   HistoryProject,
   ModelId,
+  NarrationModelId,
   PipelineState,
   StepId,
   StepRunState,
   VariableKey,
 } from "@/types/agent";
+import { VARIABLE_KEY_TO_PIPELINE_FIELD } from "@/lib/agent/variable-metadata";
 
 type ThumbnailImage =
   | {
@@ -27,6 +29,13 @@ type ThumbnailImage =
       url?: string;
     }
   | null;
+
+type ThumbnailMetrics = {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  costUsd: number | null;
+} | null;
 
 type PromptOverrides = Partial<Record<StepId, string>>;
 
@@ -49,6 +58,7 @@ function createInitialPipeline(): PipelineState {
   return {
     topic: "",
     model: DEFAULT_MODEL_ID,
+    narrationModelId: DEFAULT_NARRATION_MODEL,
     steps: createInitialSteps(),
     totalTokens: 0,
     totalCostUsd: 0,
@@ -56,6 +66,8 @@ function createInitialPipeline(): PipelineState {
 }
 
 const PIPELINE_STORAGE_KEY = "pipeline:v1";
+const DEFAULT_NARRATION_MODEL: NarrationModelId = "eleven_v3";
+const AUTO_SAVE_ERROR_PREFIX = "Auto-save failed:";
 
 function isPipelineState(value: unknown): value is PipelineState {
   if (!value || typeof value !== "object") {
@@ -79,10 +91,14 @@ function loadInitialPipeline(): PipelineState {
         if (isPipelineState(parsed)) {
           const base = createInitialPipeline();
           const normalizedModel = normalizeModelId(parsed.model) ?? DEFAULT_MODEL_ID;
+          const normalizedNarrationModel = normalizeNarrationModelId(
+            parsed.narrationModelId,
+          );
           return {
             ...base,
             ...parsed,
             model: normalizedModel,
+            narrationModelId: normalizedNarrationModel,
             steps: {
               ...base.steps,
               ...parsed.steps,
@@ -95,6 +111,12 @@ function loadInitialPipeline(): PipelineState {
     }
   }
   return createInitialPipeline();
+}
+
+function normalizeNarrationModelId(value: unknown): NarrationModelId {
+  return value === "eleven_multilingual_v2" || value === "eleven_v3"
+    ? value
+    : DEFAULT_NARRATION_MODEL;
 }
 
 type PipelineStringField =
@@ -160,6 +182,14 @@ function downloadTextFile(filename: string, content: string, mimeType = "text/pl
   URL.revokeObjectURL(url);
 }
 
+function createCacheBustedUrl(url?: string | null): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${Date.now()}`;
+}
+
 export function useAgentPipeline() {
   const [pipeline, setPipeline] = useState<PipelineState>(() => createInitialPipeline());
   const [promptOverrides, setPromptOverrides] = useState<PromptOverrides>({});
@@ -176,6 +206,7 @@ export function useAgentPipeline() {
   const [thumbnailImage, setThumbnailImage] = useState<ThumbnailImage>(null);
   const [thumbnailGenerationTime, setThumbnailGenerationTime] = useState<number | null>(null);
   const [thumbnailError, setThumbnailError] = useState<string | null>(null);
+  const [thumbnailMetrics, setThumbnailMetrics] = useState<ThumbnailMetrics>(null);
 
   const [historyProjects, setHistoryProjects] = useState<HistoryProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -185,6 +216,109 @@ export function useAgentPipeline() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isDeletingProjectId, setIsDeletingProjectId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const pipelineRef = useRef(pipeline);
+  useEffect(() => {
+    pipelineRef.current = pipeline;
+  }, [pipeline]);
+
+  const autoSavePendingRef = useRef(false);
+  const autoSaveProcessingRef = useRef(false);
+
+  const reportAutoSaveError = useCallback(
+    (message: string) => {
+      setSaveError((prev) => {
+        if (prev && !prev.startsWith(AUTO_SAVE_ERROR_PREFIX)) {
+          return prev;
+        }
+        return `${AUTO_SAVE_ERROR_PREFIX} ${message}`;
+      });
+    },
+    [],
+  );
+
+  const clearAutoSaveError = useCallback(() => {
+    setSaveError((prev) => {
+      if (prev && prev.startsWith(AUTO_SAVE_ERROR_PREFIX)) {
+        return null;
+      }
+      return prev;
+    });
+  }, []);
+
+  const performAutoSave = useCallback(async () => {
+    const latest = pipelineRef.current;
+    const trimmedTopic = latest.topic.trim();
+    if (!trimmedTopic) {
+      return;
+    }
+
+    const projectSlug = getOrCreateProjectSlug(latest.projectSlug, latest.topic);
+    const payload: PipelineState = {
+      ...latest,
+      projectSlug,
+    };
+
+    try {
+      const response = await fetch("/api/history/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ pipeline: payload }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || data?.error) {
+        const message =
+          (typeof data?.error === "string" && data.error) ||
+          `Failed to auto-save project (status ${response.status}).`;
+        throw new Error(message);
+      }
+
+      if (!isPipelineState(data)) {
+        throw new Error("Server returned invalid project data during auto-save.");
+      }
+
+      setPipeline((prev) => ({
+        ...prev,
+        ...data,
+        narrationModelId: normalizeNarrationModelId(
+          data.narrationModelId ?? prev.narrationModelId,
+        ),
+      }));
+
+      const nextSelectedId =
+        typeof data.id === "string" ? data.id : latest.id ?? null;
+      setSelectedProjectId(nextSelectedId);
+      clearAutoSaveError();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown auto-save error.";
+      reportAutoSaveError(message);
+      console.warn("Auto-save project failed:", error);
+    }
+  }, [clearAutoSaveError, reportAutoSaveError, setPipeline, setSelectedProjectId]);
+
+  const processAutoSaveQueue = useCallback(async () => {
+    if (autoSaveProcessingRef.current || !autoSavePendingRef.current) {
+      return;
+    }
+    autoSaveProcessingRef.current = true;
+    try {
+      while (autoSavePendingRef.current) {
+        autoSavePendingRef.current = false;
+        await performAutoSave();
+      }
+    } finally {
+      autoSaveProcessingRef.current = false;
+    }
+  }, [performAutoSave]);
+
+  const queueAutoSave = useCallback(() => {
+    autoSavePendingRef.current = true;
+    void processAutoSaveQueue();
+  }, [processAutoSaveQueue]);
 
   const sharedVars = useMemo(
     () => ({
@@ -285,7 +419,44 @@ export function useAgentPipeline() {
       }
       return prev;
     });
+    setPipeline((prev) => {
+      const narrationAudioStep = prev.steps.narrationAudio;
+      if (!narrationAudioStep || narrationAudioStep.status === "idle") {
+        return prev;
+      }
+      return {
+        ...prev,
+        steps: {
+          ...prev.steps,
+          narrationAudio: {
+            ...narrationAudioStep,
+            status: "idle",
+            errorMessage: undefined,
+            metrics: undefined,
+          },
+        },
+      };
+    });
   }, [pipeline.videoScript, pipeline.narrationScript]);
+
+  useEffect(() => {
+    if (!pipeline.audioPath) {
+      return;
+    }
+    const publicUrl = getPublicProjectFileUrl(pipeline.audioPath);
+    if (!publicUrl) {
+      return;
+    }
+    setScriptAudioUrl((current) => {
+      if (current && current.startsWith("blob:")) {
+        return current;
+      }
+      if (current === publicUrl) {
+        return current;
+      }
+      return publicUrl;
+    });
+  }, [pipeline.audioPath]);
 
   useEffect(() => {
     return () => {
@@ -295,12 +466,50 @@ export function useAgentPipeline() {
     };
   }, [scriptAudioUrl]);
 
-  const setTopic = useCallback((topic: string) => {
-    setPipeline((prev) => ({
-      ...prev,
-      topic,
-    }));
+  useEffect(() => {
+    if (!pipeline.thumbnailPath) {
+      return;
+    }
+    const publicUrl = getPublicProjectFileUrl(pipeline.thumbnailPath);
+    if (!publicUrl) {
+      return;
+    }
+    const versionedUrl = createCacheBustedUrl(publicUrl);
+    setThumbnailImage((current) => {
+      if (current && current.data) {
+        return current;
+      }
+      if (current?.url === versionedUrl) {
+        return current;
+      }
+      return current ? { ...current, url: versionedUrl } : { url: versionedUrl };
+    });
+  }, [pipeline.thumbnailPath]);
+
+  const setVariable = useCallback((variableKey: VariableKey, value: string) => {
+    setPipeline((prev) => {
+      const field = VARIABLE_KEY_TO_PIPELINE_FIELD[variableKey];
+      if (!field) {
+        return prev;
+      }
+
+      if (prev[field] === value) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [field]: value,
+      };
+    });
   }, []);
+
+  const setTopic = useCallback(
+    (topic: string) => {
+      setVariable("Topic", topic);
+    },
+    [setVariable],
+  );
 
   const setModel = useCallback((model: ModelId) => {
     setPipeline((prev) => ({
@@ -309,22 +518,18 @@ export function useAgentPipeline() {
     }));
   }, []);
 
+  const setNarrationModel = useCallback((modelId: NarrationModelId) => {
+    setPipeline((prev) => ({
+      ...prev,
+      narrationModelId: modelId,
+    }));
+  }, []);
+
   const setPromptOverride = useCallback((stepId: StepId, template: string) => {
     setPromptOverrides((prev) => ({
       ...prev,
       [stepId]: template,
     }));
-  }, []);
-
-  const resetPromptOverride = useCallback((stepId: StepId) => {
-    setPromptOverrides((prev) => {
-      if (prev[stepId] === undefined) {
-        return prev;
-      }
-      const next = { ...prev };
-      delete next[stepId];
-      return next;
-    });
   }, []);
 
   const runStep = useCallback(
@@ -344,30 +549,6 @@ export function useAgentPipeline() {
               ...prev.steps[stepId],
               status: "error",
               errorMessage: "Please enter a topic before running this step.",
-            },
-          },
-        }));
-        return;
-      }
-
-      const missingInputs = stepConfig.inputVars.filter((variable) => {
-        if (variable === "Topic") {
-          return false;
-        }
-        const value = getPipelineValueForVariable(pipeline, variable);
-        return typeof value !== "string" || value.trim().length === 0;
-      });
-
-      if (missingInputs.length > 0) {
-        const missingList = missingInputs.join(", ");
-        setPipeline((prev) => ({
-          ...prev,
-          steps: {
-            ...prev.steps,
-            [stepId]: {
-              ...prev.steps[stepId],
-              status: "error",
-              errorMessage: `Missing: ${missingList}`,
             },
           },
         }));
@@ -516,6 +697,7 @@ export function useAgentPipeline() {
                 variables: {
                   VideoScript: videoScriptText,
                 },
+                promptTemplateOverride: promptOverrides.narrationClean,
               }),
             });
 
@@ -585,13 +767,14 @@ export function useAgentPipeline() {
                       "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
-                      stepId: "narrationAudioTags",
-                      model: currentModel,
-                      topic: currentTopic,
-                      variables: {
-                        NarrationScript: narrationScriptText,
-                      },
-                    }),
+                  stepId: "narrationAudioTags",
+                  model: currentModel,
+                  topic: currentTopic,
+                  variables: {
+                    NarrationScript: narrationScriptText,
+                  },
+                  promptTemplateOverride: promptOverrides.narrationAudioTags,
+                }),
                   });
 
                   const audioTagData = await audioTagResponse.json();
@@ -620,6 +803,9 @@ export function useAgentPipeline() {
                       for (const [key, value] of Object.entries(
                         audioTagProducedVariables,
                       )) {
+                        if (key === "NarrationScript") {
+                          continue;
+                        }
                         const field =
                           PRODUCED_VARIABLE_TO_PIPELINE_FIELD[key as VariableKey];
                         if (field) {
@@ -826,6 +1012,139 @@ export function useAgentPipeline() {
     [pipeline, promptOverrides],
   );
 
+  const runNarrationAudioStep = useCallback(
+    async (scriptOverride?: string) => {
+      const currentPipeline = pipelineRef.current;
+      const cleanScript =
+        scriptOverride?.trim() ??
+        currentPipeline.narrationScript?.trim() ??
+        currentPipeline.videoScript?.trim();
+      const narrationModelId =
+        currentPipeline.narrationModelId ?? DEFAULT_NARRATION_MODEL;
+      const taggedScript =
+        currentPipeline.steps.narrationAudioTags?.responseText?.trim() ?? "";
+      const finalScript =
+        narrationModelId === "eleven_v3" && taggedScript
+          ? taggedScript
+          : cleanScript;
+
+      if (!finalScript) {
+        const fallbackError = "Generate the narration script before creating audio.";
+        setScriptAudioError(fallbackError);
+        setPipeline((prev) => ({
+          ...prev,
+          steps: {
+            ...prev.steps,
+            narrationAudio: {
+              ...prev.steps.narrationAudio,
+              status: "error",
+              errorMessage: fallbackError,
+            },
+          },
+        }));
+        return;
+      }
+
+      setIsGeneratingScriptAudio(true);
+      setScriptAudioError(null);
+      setScriptAudioUrl((prev) => {
+        if (prev && prev.startsWith("blob:")) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
+      setScriptAudioGenerationTimeMs(null);
+
+      const projectSlug = getOrCreateProjectSlug(currentPipeline.projectSlug, currentPipeline.topic);
+      const audioPath = buildProjectAudioPath(projectSlug);
+
+      setPipeline((prev) => ({
+        ...prev,
+        projectSlug,
+        audioPath,
+        steps: {
+          ...prev.steps,
+          narrationAudio: {
+            ...prev.steps.narrationAudio,
+            status: "running",
+            errorMessage: undefined,
+            resolvedPrompt: "",
+            responseText: "",
+            metrics: undefined,
+          },
+        },
+      }));
+
+      const startTime = performance.now();
+
+      try {
+        const response = await fetch("/api/tts/generate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        body: JSON.stringify({ text: finalScript, projectSlug, modelId: narrationModelId }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          let message = `Failed to generate audio (status ${response.status}).`;
+          if (errorText) {
+            try {
+              const parsed = JSON.parse(errorText);
+              const details =
+                (typeof parsed?.details === "string" && parsed.details) ||
+                (typeof parsed?.error === "string" && parsed.error);
+              if (typeof details === "string" && details.trim().length > 0) {
+                message = details;
+              } else {
+                message = errorText;
+              }
+            } catch {
+              message = errorText;
+            }
+          }
+          throw new Error(message);
+        }
+
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        setScriptAudioUrl(objectUrl);
+        setScriptAudioGenerationTimeMs(performance.now() - startTime);
+        setPipeline((prev) => ({
+          ...prev,
+          steps: {
+            ...prev.steps,
+            narrationAudio: {
+              ...prev.steps.narrationAudio,
+              status: "success",
+              errorMessage: undefined,
+            },
+          },
+        }));
+        queueAutoSave();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to generate audio. Please try again.";
+        setScriptAudioError(message);
+        setPipeline((prev) => ({
+          ...prev,
+          steps: {
+            ...prev.steps,
+            narrationAudio: {
+              ...prev.steps.narrationAudio,
+              status: "error",
+              errorMessage: message,
+            },
+          },
+        }));
+      } finally {
+        setIsGeneratingScriptAudio(false);
+      }
+    },
+    [queueAutoSave],
+  );
+
   const runAll = useCallback(async () => {
     const trimmedTopic = pipeline.topic.trim();
     if (!trimmedTopic) {
@@ -874,7 +1193,18 @@ export function useAgentPipeline() {
           ...data,
           id: data.id ?? prev.id,
           projectSlug: data.projectSlug ?? prev.projectSlug,
+          narrationModelId: normalizeNarrationModelId(
+            data.narrationModelId ?? prev.narrationModelId,
+          ),
         }));
+
+        const nextNarrationScript =
+          typeof data.narrationScript === "string" && data.narrationScript.trim().length > 0
+            ? data.narrationScript
+            : undefined;
+        if (nextNarrationScript) {
+          await runNarrationAudioStep(nextNarrationScript);
+        }
         return;
       }
       if (!response.ok) {
@@ -899,7 +1229,7 @@ export function useAgentPipeline() {
     } finally {
       setIsRunningAll(false);
     }
-  }, [pipeline, promptOverrides]);
+  }, [pipeline, promptOverrides, runNarrationAudioStep]);
 
   const newProject = useCallback(() => {
     setPipeline(() => createInitialPipeline());
@@ -919,6 +1249,7 @@ export function useAgentPipeline() {
     setThumbnailImage(null);
     setThumbnailGenerationTime(null);
     setThumbnailError(null);
+    setThumbnailMetrics(null);
   }, []);
 
   const saveProject = useCallback(async () => {
@@ -961,6 +1292,9 @@ export function useAgentPipeline() {
         setPipeline((prev) => ({
           ...prev,
           ...data,
+          narrationModelId: normalizeNarrationModelId(
+            data.narrationModelId ?? prev.narrationModelId,
+          ),
         }));
         const nextSelectedId =
           typeof data.id === "string" ? data.id : (pipeline.id ?? null);
@@ -996,6 +1330,9 @@ export function useAgentPipeline() {
       setPipeline((prev) => ({
         ...prev,
         ...loadedPipeline,
+        narrationModelId: normalizeNarrationModelId(
+          loadedPipeline.narrationModelId ?? prev.narrationModelId,
+        ),
       }));
       const audioUrl = getPublicProjectFileUrl(loadedPipeline.audioPath);
       setScriptAudioUrl((prevUrl) => {
@@ -1086,76 +1423,6 @@ export function useAgentPipeline() {
     }
   }, []);
 
-  const generateScriptAudio = useCallback(async () => {
-    const script = pipeline.narrationScript?.trim() || pipeline.videoScript?.trim();
-    if (!script) {
-      return;
-    }
-
-    setIsGeneratingScriptAudio(true);
-    setScriptAudioError(null);
-    setScriptAudioUrl((prev) => {
-      if (prev) {
-        URL.revokeObjectURL(prev);
-      }
-      return null;
-    });
-    setScriptAudioGenerationTimeMs(null);
-
-    const projectSlug = getOrCreateProjectSlug(pipeline.projectSlug, pipeline.topic);
-    const audioPath = buildProjectAudioPath(projectSlug);
-
-    setPipeline((prev) => ({
-      ...prev,
-      projectSlug,
-      audioPath,
-    }));
-
-    const startTime = performance.now();
-
-    try {
-      const response = await fetch("/api/tts/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ text: script, projectSlug }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let message = `Failed to generate audio (status ${response.status}).`;
-        if (errorText) {
-          try {
-            const parsed = JSON.parse(errorText);
-            const details =
-              (typeof parsed?.details === "string" && parsed.details) ||
-              (typeof parsed?.error === "string" && parsed.error);
-            if (typeof details === "string" && details.trim().length > 0) {
-              message = details;
-            } else {
-              message = errorText;
-            }
-          } catch {
-            message = errorText;
-          }
-        }
-        throw new Error(message);
-      }
-
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      setScriptAudioUrl(objectUrl);
-      setScriptAudioGenerationTimeMs(performance.now() - startTime);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to generate audio. Please try again.";
-      setScriptAudioError(message);
-    } finally {
-      setIsGeneratingScriptAudio(false);
-    }
-  }, [pipeline]);
-
   const generateThumbnail = useCallback(async () => {
     const prompt = pipeline.thumbnailPrompt?.trim();
     if (!prompt) {
@@ -1163,18 +1430,17 @@ export function useAgentPipeline() {
     }
 
     const projectSlug = getOrCreateProjectSlug(pipeline.projectSlug, pipeline.topic);
-    const thumbnailPath = buildProjectThumbnailPath(projectSlug);
+    const thumbnailPath = buildProjectThumbnailPath(projectSlug, { unique: true });
 
     setPipeline((prev) => ({
       ...prev,
       projectSlug,
-      thumbnailPath,
     }));
 
     setIsGeneratingThumbnail(true);
     setThumbnailError(null);
-    setThumbnailImage(null);
     setThumbnailGenerationTime(null);
+    setThumbnailMetrics(null);
 
     const startTime = performance.now();
 
@@ -1182,7 +1448,7 @@ export function useAgentPipeline() {
       const res = await fetch("/api/gemini/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, projectSlug }),
+        body: JSON.stringify({ prompt, projectSlug, thumbnailPath }),
       });
 
       if (!res.ok) {
@@ -1196,39 +1462,92 @@ export function useAgentPipeline() {
         typeof storagePath === "string"
           ? getPublicProjectFileUrl(storagePath)
           : data.thumbnailUrl;
+      const versionedUrl = createCacheBustedUrl(publicUrl);
+
+      if (typeof storagePath === "string" && storagePath.trim().length > 0) {
+        setPipeline((prev) => {
+          const nextPipeline = {
+            ...prev,
+            thumbnailPath: storagePath,
+          };
+          pipelineRef.current = nextPipeline;
+          return nextPipeline;
+        });
+      }
 
       setThumbnailImage({
         data: data.imageBase64,
         mimeType: data.mimeType,
-        url: publicUrl ?? undefined,
+        url: versionedUrl ?? undefined,
       });
       setThumbnailGenerationTime(performance.now() - startTime);
+      const usage = data.usage;
+      setThumbnailMetrics({
+        inputTokens: typeof usage?.promptTokens === "number" ? usage.promptTokens : null,
+        outputTokens: typeof usage?.outputTokens === "number" ? usage.outputTokens : null,
+        totalTokens: typeof usage?.totalTokens === "number" ? usage.totalTokens : null,
+        costUsd: typeof data.costUsd === "number" ? data.costUsd : null,
+      });
+      queueAutoSave();
     } catch (err) {
       setThumbnailError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setIsGeneratingThumbnail(false);
     }
-  }, [pipeline]);
+  }, [pipeline, queueAutoSave]);
 
-  const downloadThumbnail = useCallback(() => {
+  const downloadVoiceover = useCallback(() => {
+    if (!scriptAudioUrl) {
+      return;
+    }
+    const slug = slugifyTopic(pipeline.topic);
+    const link = document.createElement("a");
+    link.href = scriptAudioUrl;
+    link.download = `${slug}-script.mp3`;
+    document.body?.appendChild(link);
+    link.click();
+    document.body?.removeChild(link);
+  }, [pipeline.topic, scriptAudioUrl]);
+
+  const downloadThumbnail = useCallback(async () => {
     if (!thumbnailImage) {
       return;
     }
     const slug = slugifyTopic(pipeline.topic);
-    const href =
-      thumbnailImage.url ??
-      (thumbnailImage.mimeType && thumbnailImage.data
+
+    const triggerDownload = (href: string) => {
+      const link = document.createElement("a");
+      link.href = href;
+      link.download = `${slug}-thumbnail.png`;
+      document.body?.appendChild(link);
+      link.click();
+      document.body?.removeChild(link);
+    };
+
+    const dataHref =
+      thumbnailImage.mimeType && thumbnailImage.data
         ? `data:${thumbnailImage.mimeType};base64,${thumbnailImage.data}`
-        : null);
-    if (!href) {
+        : null;
+
+    if (dataHref) {
+      triggerDownload(dataHref);
       return;
     }
-    const link = document.createElement("a");
-    link.href = href;
-    link.download = `${slug}-thumbnail.png`;
-    document.body?.appendChild(link);
-    link.click();
-    document.body?.removeChild(link);
+
+    if (thumbnailImage.url) {
+      try {
+        const response = await fetch(thumbnailImage.url, { mode: "cors" });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch thumbnail (status ${response.status})`);
+        }
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        triggerDownload(objectUrl);
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      } catch (error) {
+        console.error("Thumbnail download error:", error);
+      }
+    }
   }, [pipeline.topic, thumbnailImage]);
 
   const exportFiles = useCallback(() => {
@@ -1281,6 +1600,7 @@ export function useAgentPipeline() {
       thumbnailImage,
       thumbnailGenerationTime,
       thumbnailError,
+      thumbnailMetrics,
     },
     derived: {
       sharedVars,
@@ -1291,10 +1611,11 @@ export function useAgentPipeline() {
       videoScriptStats,
     },
     actions: {
+      setVariable,
       setTopic,
       setModel,
+      setNarrationModel,
       setPromptOverride,
-      resetPromptOverride,
       runStep,
       runAll,
       newProject,
@@ -1302,8 +1623,10 @@ export function useAgentPipeline() {
       selectProject,
       deleteProject,
       refreshHistory,
-      generateScriptAudio,
+      generateScriptAudio: runNarrationAudioStep,
+      runNarrationAudioStep,
       generateThumbnail,
+      downloadVoiceover,
       downloadThumbnail,
       exportFiles,
       exportScriptMarkdown,

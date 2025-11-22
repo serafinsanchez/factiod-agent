@@ -192,6 +192,8 @@ Here are the key concepts
 — [KeyConcepts] —
 ```
 
+> **Cost:** Gemini 3 Pro (1K-4K) image renders typically consume 1,210-2,000 tokens. At $20 per 1M image tokens, expect roughly $0.024-$0.040 per thumbnail generation.
+
 ---
 
 # **4. Type System**
@@ -303,6 +305,8 @@ export function estimateCost(model: ModelId, promptTokens: number, completionTok
   );
 }
 ```
+
+Thumbnail image generation uses Gemini 3 Pro (1K-4K) outside this token ledger. Each render typically consumes 1,210-2,000 image tokens at $20 per 1M, so allocate an additional ~$0.024-$0.040 per thumbnail.
 
 ---
 

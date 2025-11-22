@@ -5,6 +5,7 @@ const DEFAULT_VOICE_ID = process.env.ELEVENLABS_VOICE_ID!;
 const DEFAULT_MODEL_ID = process.env.ELEVENLABS_MODEL_ID ?? 'eleven_v3';
 export const ELEVEN_V3_MAX_CHARS = 5000;
 export const ELEVEN_V3_SAFE_CHARS = 3800;
+export const ELEVEN_MULTILINGUAL_V2_MAX_CHARS = 10000;
 
 if (!API_KEY) {
   console.warn('ELEVENLABS_API_KEY is not set. TTS will fail.');

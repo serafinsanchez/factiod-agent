@@ -1,4 +1,5 @@
 export type ModelId = 'gpt-5.1-2025-11-13' | 'kimik2-thinking';
+export type NarrationModelId = 'eleven_v3' | 'eleven_multilingual_v2';
 
 export type StepId =
   | 'keyConcepts'
@@ -8,6 +9,7 @@ export type StepId =
   | 'scriptQA'
   | 'narrationClean'
   | 'narrationAudioTags'
+  | 'narrationAudio'
   | 'titleDescription'
   | 'thumbnail';
 
@@ -67,6 +69,7 @@ export interface PipelineState {
   model: ModelId;
   totalTokens: number;
   totalCostUsd: number;
+  narrationModelId?: NarrationModelId;
   /**
    * Optional fields used for persistence of projects/history.
    * These are kept optional so older saved state continues to work.

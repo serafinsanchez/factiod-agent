@@ -1,3 +1,5 @@
+import { randomUUID } from "crypto";
+
 import { GoogleGenAI } from "@google/genai";
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -5,10 +7,13 @@ import {
   PROJECTS_BUCKET,
   buildProjectThumbnailPath,
 } from "@/lib/projects";
+import { TOKENS_PER_MILLION } from "@/lib/llm/costs";
+
+const GEMINI_IMAGE_PRICE_PER_MILLION = 20;
 
 export async function POST(request: Request) {
   try {
-    const { prompt, projectSlug } = await request.json();
+    const { prompt, projectSlug, thumbnailPath: providedThumbnailPath } = await request.json();
 
     if (!prompt || typeof prompt !== "string") {
       return Response.json({ error: "Prompt is required" }, { status: 400 });
@@ -24,12 +29,45 @@ export async function POST(request: Request) {
 
     const ai = new GoogleGenAI({ apiKey });
 
-    // Explicitly instruct the model to generate an image
-    const imagePrompt = `Generate an image: ${prompt}`;
+    const variationTag = randomUUID();
+    const structuredPrompt = [
+      "You are Gemini 3 Pro Image Preview generating a cinematic 16:9 YouTube thumbnail for curious kids ages 5-9.",
+      "Interpret the creative brief below and render a photoreal subject mid-action with expressive emotion.",
+      "Requirements:",
+      "- Subject & action: follow the brief, make the main character the focal point, capture motion.",
+      "- Environment: include context from the topic in the background with depth and storytelling props.",
+      "- Lighting & mood: bright, high-key rim light with soft diffusion; no harsh shadows.",
+      "- Color palette: saturated, complementary colors with clean whites and accurate skin tones.",
+      "- Text overlay: add a bold, 2-3 word caption derived from the brief in the upper-left, high-contrast, legible.",
+      "- Camera & composition: cinematic wide shot, shallow depth of field, rule-of-thirds framing, plenty of breathing room.",
+      "- Safety & negatives: kid-safe, no gore, no weapons, no extra logos, no creepy vibes, no additional text beyond the overlay.",
+      `- Variation tag: ${variationTag}. Treat this tag as a randomness source so every run looks different, but never draw or print it.`,
+      "Creative brief:",
+      `\"\"\"${prompt}\"\"\"`,
+    ].join("\n");
+    const promptContent = [
+      {
+        role: "user",
+        parts: [{ text: structuredPrompt }],
+      },
+    ];
+
+    let promptTokenCount: number | null = null;
+    try {
+      const tokenEstimate = await ai.models.countTokens({
+        model: "gemini-3-pro-image-preview",
+        contents: promptContent,
+      });
+      if (typeof tokenEstimate.totalTokens === "number") {
+        promptTokenCount = tokenEstimate.totalTokens;
+      }
+    } catch (tokenError) {
+      console.warn("Gemini image countTokens failed:", tokenError);
+    }
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
-      contents: imagePrompt,
+      model: "gemini-3-pro-image-preview",
+      contents: promptContent,
       config: {
         imageConfig: {
           aspectRatio: "16:9",
@@ -89,7 +127,10 @@ export async function POST(request: Request) {
 
     if (typeof projectSlug === "string" && projectSlug.trim().length > 0) {
       const slug = projectSlug.trim();
-      const path = buildProjectThumbnailPath(slug);
+      const path =
+        typeof providedThumbnailPath === "string" && providedThumbnailPath.trim().length > 0
+          ? providedThumbnailPath.trim()
+          : buildProjectThumbnailPath(slug, { unique: true });
 
       try {
         const supabase = getSupabaseServerClient();
@@ -141,10 +182,37 @@ export async function POST(request: Request) {
       );
     }
 
+    const usageMetadata = response.usageMetadata;
+    const usage = {
+      promptTokens:
+        typeof promptTokenCount === "number"
+          ? promptTokenCount
+          : typeof usageMetadata?.promptTokenCount === "number"
+            ? usageMetadata.promptTokenCount
+            : null,
+      outputTokens:
+        typeof usageMetadata?.candidatesTokenCount === "number"
+          ? usageMetadata.candidatesTokenCount
+          : null,
+      totalTokens:
+        typeof promptTokenCount === "number"
+          ? promptTokenCount
+          : typeof usageMetadata?.totalTokenCount === "number"
+            ? usageMetadata.totalTokenCount
+            : null,
+    };
+    const totalTokens = usage?.totalTokens ?? null;
+    const costUsd =
+      typeof totalTokens === "number"
+        ? Number(((totalTokens / TOKENS_PER_MILLION) * GEMINI_IMAGE_PRICE_PER_MILLION).toFixed(6))
+        : null;
+
     return Response.json({
       imageBase64,
       mimeType,
       thumbnailPath,
+      usage,
+      costUsd,
     });
   } catch (error) {
     console.error("Gemini image generation error:", error);

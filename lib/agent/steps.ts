@@ -1,10 +1,146 @@
 import { StepConfig, StepId } from '../../types/agent';
 import { DEFAULT_MODEL_ID } from '../llm/models';
 
+const SCRIPT_PROMPT_TEMPLATE = `# PIP Academy Video Script Writing Guide
+
+You are an expert writer of educational video scripts for elementary-age kids (around 7–11 years old). You’re writing for a YouTube channel called **PIP Academy**. Your job is to create fun, highly engaging scripts that also teach clearly and accurately. This script will be given to the Elevenlabs text to speech model to create a voiceover for the video.
+
+You will be given the following inputs:
+
+- **Topic**  
+  *[High-level topic of the video]*
+
+- **Key Concepts**  
+  *[Bullet list of the key ideas the video must teach]*
+
+- **Hook**  
+  *[The opening hook text that must be used at the very top]*
+
+- **Quiz Info**  
+  *[Two quiz questions and answers, clearly labeled: Q1/A1 and Q2/A2. Multiple choice or true/false is allowed.]*
+
+---
+
+## Script Structure (Follow This Template)
+
+### 1. Hook (Given)
+- Start with the exact “Hook” text provided, word for word, as the very first lines.
+- **Do NOT** add any greeting before the Hook.
+- Immediately after, add 1–2 sentences that zoom out to the big question or mystery of the video.
+
+### 2. Simple Definition of the Topic
+- Answer: “So what is [Topic]?” in simple, kid-friendly language.
+- Offer a brief, clear definition.
+- Use an everyday comparison or example for visualization.
+
+### 3. Explain the Basics Using Key Concepts (Part 1)
+- Use about half of the Key Concepts here.
+- Present them logically (steps, stages, types, etc.).
+- Use transitions like “First…”, “Next…”, “Another important part…”
+- Speak directly to the viewer (“you”) and use vivid examples from kids’ lives (school, games, toys, trips).
+- Ask rhetorical questions to keep engagement high (e.g., “Can you imagine…?”, “Have you ever noticed…?”).
+
+### 4. Quiz 1 Block
+- Lead in: “Time for our first quiz. Ready?” or similar.
+- Present Q1 exactly as provided (keep answer choices if included).
+- Add a pause cue for the editor (e.g., “Pause the video and think about it.”).
+- After the pause, reveal and explain the answer:
+  - “If you said [correct answer], then well done.”
+  - Briefly re-teach the idea behind the answer, tying it back to one of the Key Concepts.
+
+### 5. Deeper Explanation & "Cool Facts" (Part 2)
+- Use the rest of Key Concepts.
+- Dive deeper into how things work (processes, systems, machines, invisible parts).
+- Include at least 2–3 “wow” facts (record sizes, extreme costs, surprising uses, futuristic tech).
+  - Introduce with phrases like, “Did you know…” or “Here’s something wild…”
+- Show how this topic connects to everyday life and the bigger world.
+
+### 6. Quiz 2 Block
+- Lead in: “Here comes our second quiz.” or similar.
+- Present Q2 exactly as given.
+- Add a pause cue: “Pause the video and make your best guess.”
+- Reveal and explain the correct answer with positive reinforcement:
+  - “If you chose [answer], that’s absolutely right.”
+  - Tie the explanation back to the Key Concepts.
+
+### 7. Future / Importance / Big Picture
+- Briefly explain why this topic matters (jobs, solving problems, making life easier, protecting the planet, etc.).
+- Optionally mention future improvements or innovations (safer, cleaner, faster, smarter).
+- Use 3–5 sentences to convey this topic’s power and meaning.
+
+### 8. Recap
+- Summarize the main ideas naturally (not bullet points).
+- For example:
+  - “Today we learned that… [definition].”
+  - “We discovered that… [2–3 key points].”
+  - “And we saw how… [importance or real-world impact].”
+
+### 9. Closing & Optional Final Promo
+- Close with an encouraging, curiosity-focused message:
+  - Example: “Next time you [related experience], you’ll know what’s really happening.”
+- Encourage curiosity and further exploration.
+- Mention “PIP Academy” naturally 1–3 times in the entire script.
+  - e.g., “Here at PIP Academy…” or “Thanks for learning with PIP Academy today.”
+- If a Promo Copy Outro is provided, add it at the very end.
+
+---
+
+## Style & Length Rules
+
+- **Target length:** about 9 minutes read aloud (**minimum ~1,600 words**).
+- Write in smooth, natural sentences, with lots of punctuation to support the narrator.
+- **Avoid** baby talk and cheesy greetings (like “Hey kiddos!!!”).
+- Keep the tone warm, smart, energetic, and respectful.
+- Don’t include stage directions like \`[camera zoom]\` or \`[sound effect]\`. If a cue is needed, make it minimal and in brackets.
+
+---
+
+## Quiz Handling Summary
+
+- Use each quiz exactly once.
+- Each quiz should include:
+  - Short hype intro
+  - The exact question + answers
+  - Pause cue
+  - Correct answer with a brief explanation
+- The explanation should reinforce a Key Concept.
+
+---
+
+## Output
+
+- Output **only** the full, continuous script.
+- **Do not** label sections (no “Quiz 1” or “Definition section” headings in the script).
+- The script should flow smoothly from start to finish.
+
+---
+
+## Final Checklist (Before Submitting)
+- All Key Concepts are covered clearly
+- Both quizzes and answers included and correct
+- Script is engaging and clear for kids
+- Length is roughly ~1,600+ words
+
+---
+
+## Inputs for This Run (replace the placeholders above with these exact values)
+
+Topic:
+— [Topic] —
+
+Key Concepts:
+— [KeyConcepts] —
+
+Hook (use this verbatim at the very top of the script):
+— [HookScript] —
+
+Quiz Info (Q1/A1, Q2/A2):
+— [QuizInfo] —`;
+
 export const STEP_CONFIGS: StepConfig[] = [
   {
     id: 'keyConcepts',
-    label: 'Prompt 1 – Key Concepts',
+    label: 'Key Concepts',
     defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['Topic'],
     outputVars: ['KeyConcepts'],
@@ -14,7 +150,7 @@ The video will be about 10 minutes long. Which key concepts should we cover duri
   },
   {
     id: 'hook',
-    label: 'Prompt 2 – Hook',
+    label: 'Hook',
     defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['Topic', 'KeyConcepts'],
     outputVars: ['HookScript'],
@@ -57,7 +193,7 @@ Output only the final spoken hook script.`,
   },
   {
     id: 'quizzes',
-    label: 'Prompt 3 – Quiz Generation',
+    label: 'Quiz Generation',
     defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['Topic', 'KeyConcepts', 'HookScript'],
     outputVars: ['QuizInfo'],
@@ -80,35 +216,26 @@ Silently think about your choices and evaluate them for pedagogical importance a
   },
   {
     id: 'script',
-    label: 'Prompt 4 – Script Generation',
+    label: 'Script Generation',
     defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['Topic', 'KeyConcepts', 'HookScript', 'QuizInfo'],
     outputVars: ['VideoScript'],
-    promptTemplate: `You are an expert at scripting educational kids videos. You have great pedagogical skills and you know how to make things engaging for elementary aged kids. I already wrote the video topic, key concepts, and the hook for the video. I also wrote two quiz questions that I want to interject in the video. We will pause the video and ask the quiz questions. That way we know the kid is engaged to the video instead of just watching like a zombie. 
-
-You are going to write a video script for me that uses best practices for engaging kids videos. It's important that this video matches pedagogical standards but it's even more important that it's fun and engaging for kids. A 10-minute narration should be roughly 1,400 to 1,500 words, so keep the final script under 1,600 words. Silently review the script for kid engagement and ease of narration before finalizing the script. 
-
-The script that you write will be written verbatim by a narrator. Include lots of punctuation to help the narrator read your script. Output only an engaging kids script and nothing else. My channel is called PIP academy and you can reference that name. 
-
-Here is my video topic
-— [Topic] —
-Here are the key concepts in the video
-— [KeyConcepts] —
-
-Here is the script for the video hook 
-— [HookScript] —
-Here are the quiz questions and answers
-— [QuizInfo] —
-
-Include the hook at the top of the script when you output the script. Don't do any cheesy greetings.`,
+    promptTemplate: SCRIPT_PROMPT_TEMPLATE,
   },
   {
     id: 'scriptQA',
-    label: 'Prompt 4d – Script QA',
+    label: 'Script QA',
     defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['VideoScript'],
     outputVars: ['VideoScript'],
     promptTemplate: `You are a quality assurance editor for PIP Academy's educational kids videos. The audience is elementary kids aged 5-9. Review the narrator-ready script below and ensure it meets our standards.
+
+Current length data for this pass:
+- Attempt #: [QA_AttemptNumber]
+- Source words: [QA_SourceWordCount]
+- Target window: [QA_TargetWordMin]–[QA_TargetWordMax] words
+- Hard cap: [QA_HardWordCap] words
+- Revision notes: [QA_RevisionNotes]
 
 Here is the script to review:
 — [VideoScript] —
@@ -133,7 +260,7 @@ Process (think silently, do not show):
 
 Output format (strict):
 Checklist:
-LENGTH: (✅ or ❌) include the final word count and note any trimming performed.
+LENGTH: (✅ or ❌) include the actual final word count you just calculated and note any trimming performed.
 FACTS: (✅ or ❌) one short sentence about the decision.
 TONE: (✅ or ❌) one short sentence about the decision.
 
@@ -142,11 +269,10 @@ Final Script:
   },
   {
     id: 'narrationClean',
-    label: 'Prompt 4b – Narration Cleaner',
+    label: 'Narration Cleaner',
     defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['VideoScript'],
     outputVars: ['NarrationScript'],
-    hidden: true,
     promptTemplate: `Take this video script for a narrator.
 
 Remove any stage directions, sound cues, or editing notes that are not meant to be spoken.
@@ -162,14 +288,13 @@ Video Script:
   },
   {
     id: 'narrationAudioTags',
-    label: 'Prompt 4c – Narration Audio Tags',
+    label: 'Narration Audio Tags',
     defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['NarrationScript'],
-    outputVars: ['NarrationScript'],
-    hidden: true,
+    outputVars: [],
     promptTemplate: `You are an AI assistant specializing in enhancing dialogue for speech generation.
 
-PRIMARY GOAL: Dynamically integrate audio tags (e.g., [laughs], [whispers], [sighs]) while STRICTLY preserving all original words and meaning. Do not remove or rewrite any words.
+PRIMARY GOAL: Dynamically integrate audio tags (e.g., [laughs], [whispers], [sighs]) to be used by the Elevenlabs v3 text to speech model while STRICTLY preserving all original words and meaning. Do not remove or rewrite any words.
 
 Rules:
 - Only add voice-related audio tags in square brackets. No SFX/music/stage directions.
@@ -184,8 +309,16 @@ Narration Script:
 — [NarrationScript] —`,
   },
   {
+    id: 'narrationAudio',
+    label: 'Narration Audio (Voiceover)',
+    defaultModel: DEFAULT_MODEL_ID,
+    inputVars: ['NarrationScript'],
+    outputVars: [],
+    promptTemplate: `This is a shell step that triggers ElevenLabs text-to-speech generation client-side once narration audio tags are ready.`,
+  },
+  {
     id: 'titleDescription',
-    label: 'Prompt 5 – Title & Description',
+    label: 'Title & Description',
     defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['Topic', 'KeyConcepts', 'HookScript', 'QuizInfo'],
     outputVars: ['Title', 'Description'],
@@ -208,13 +341,27 @@ Title on its own line, blank line, then description.`,
   },
   {
     id: 'thumbnail',
-    label: 'Prompt 6 – Thumbnail Prompt',
+    label: 'Thumbnail Prompt',
     defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['Topic', 'KeyConcepts'],
     outputVars: ['ThumbnailPrompt'],
-    promptTemplate: `You are an expert youtube marketer. My Youtube channel teaches elementary aged kids aged 5 to 9. I need to generate a video thumbnail that is 16:9. I need something that will spark curiosity for a child. My best performing videos feature a photoreal image of a kid's face doing something in the video, but it’s not totally required.
+    promptTemplate: `You are an art director crafting high-click YouTube thumbnails for curious elementary school kids (ages 5-9). Think like Google's Gemini image team: be concrete about subject, camera, lighting, color palette, and any overlay text so the model can render a photoreal 16:9 frame that stays kid-safe.
 
-Review my video details and think about how to drive maximum clicks from elementary-aged kids. Then give me a text prompt for Midjourney to generate the thumbnail. Output only the prompt.
+Steps:
+1. Read the topic and key concepts. Imagine the most exciting single moment that will hook a child.
+2. Describe the scene using cinematic vocabulary - who is the hero, what are they doing, where are they, and which props prove it.
+3. Specify lighting, mood, palette, camera angle, and depth-of-field choices that reinforce energy and clarity.
+4. Suggest a short 2-3 word overlay caption that could live in the top-left corner with high contrast.
+5. List negative directions that keep the image safe (no gore, no weapons, no text beyond the overlay, no logos).
+
+Output format (no extra commentary):
+Subject & Action: ...
+Environment & Props: ...
+Lighting & Mood: ...
+Color Palette & Style: ...
+Camera & Composition: ...
+Text Overlay: ...
+Negative Prompts: ...
 
 Here is my video topic
 — [Topic] —

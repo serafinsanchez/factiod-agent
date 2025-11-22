@@ -16,7 +16,7 @@ export default function HomePage() {
       derived={pipeline.derived}
       actions={pipeline.actions}
       activeStageId={activeStageId}
-      onStageChange={setActiveStageId}
+      onStageChangeAction={setActiveStageId}
     />
   );
 }

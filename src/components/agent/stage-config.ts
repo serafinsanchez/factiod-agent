@@ -19,8 +19,9 @@ export const STAGES: StageDefinition[] = [
   {
     id: "script",
     label: "Stage 2 – Script & Narration",
-    description: "Generate the script, run QA, and clean narration.",
-    steps: ["script", "scriptQA"],
+    description:
+      "Generate the script, run QA, clean narration, add audio tags, and then render the ElevenLabs voiceover.",
+    steps: ["script", "scriptQA", "narrationClean", "narrationAudioTags", "narrationAudio"],
   },
   {
     id: "publish",

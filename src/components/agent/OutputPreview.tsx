@@ -1,8 +1,10 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { slugifyTopic } from "@/lib/slug";
 
 import type { UseAgentPipelineReturn } from "@/hooks/use-agent-pipeline";
@@ -18,6 +20,8 @@ export function OutputPreview({ state, derived, actions }: OutputPreviewProps) {
   const narration = state.pipeline.narrationScript?.trim();
   const title = state.pipeline.title?.trim();
   const description = state.pipeline.description?.trim();
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const contentRegionId = "final-outputs-content";
   const thumbnailSrc =
     state.thumbnailImage?.url ??
     (state.thumbnailImage?.mimeType && state.thumbnailImage?.data
@@ -26,16 +30,36 @@ export function OutputPreview({ state, derived, actions }: OutputPreviewProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-          Final outputs
-        </p>
-        <p className="text-sm text-zinc-400">
-          Review everything the agent has produced so far.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
+            Final outputs
+          </p>
+          <p className="text-sm text-zinc-400">
+            Review everything the agent has produced so far.
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="inline-flex items-center gap-2 rounded-full border border-zinc-800/80 bg-zinc-950/40 px-3 text-[0.6rem] font-semibold uppercase tracking-[0.25em] text-zinc-200 hover:border-white/40 hover:bg-white/10 hover:text-white"
+          onClick={() => setIsCollapsed((prev) => !prev)}
+          aria-expanded={!isCollapsed}
+          aria-controls={contentRegionId}
+        >
+          <ChevronDown
+            className={cn("h-4 w-4 transition-transform", isCollapsed ? "-rotate-90" : "rotate-0")}
+          />
+          {isCollapsed ? "Expand" : "Collapse"}
+        </Button>
       </div>
 
-      <div className="space-y-4">
+      <div
+        id={contentRegionId}
+        aria-hidden={isCollapsed}
+        className={cn("space-y-4", isCollapsed && "hidden")}
+      >
         <AssetCard title="Video script">
           {script ? (
             <div className="max-h-[320px] overflow-y-auto whitespace-pre-wrap font-mono text-sm text-zinc-100">

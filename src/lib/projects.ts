@@ -10,7 +10,13 @@ export function buildProjectAudioPath(projectSlug: string): string {
   return `${projectSlug}/${projectSlug}-audio.mp3`;
 }
 
-export function buildProjectThumbnailPath(projectSlug: string): string {
+export function buildProjectThumbnailPath(
+  projectSlug: string,
+  options?: { unique?: boolean },
+): string {
+  if (options?.unique) {
+    return `${projectSlug}/${projectSlug}-thumbnail-${Date.now()}.png`;
+  }
   return `${projectSlug}/${projectSlug}-thumbnail.png`;
 }
 

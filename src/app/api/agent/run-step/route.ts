@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { runStep } from '../../../../../lib/agent/runStep';
-import { extractFinalScript } from '../../../../../lib/agent/scriptQA';
+import { extractFinalScript, runScriptQaWithWordGoal } from '../../../../../lib/agent/scriptQA';
 import { getStepConfig } from '../../../../../lib/agent/steps';
 import { normalizeModelId } from '../../../../../lib/llm/models';
 import type { ModelId, StepId } from '../../../../../types/agent';
@@ -123,14 +123,20 @@ export async function POST(request: Request) {
 
     const step = getStepConfig(stepId);
 
-    const { resolvedPrompt, responseText, metrics, producedVariables: baseProducedVariables } =
-      await runStep({
-        step,
-        model,
-        topic,
-        variables,
-        promptTemplateOverride,
-      });
+    const runner = stepId === 'scriptQA' ? runScriptQaWithWordGoal : runStep;
+
+    const {
+      resolvedPrompt,
+      responseText,
+      metrics,
+      producedVariables: baseProducedVariables,
+    } = await runner({
+      step,
+      model,
+      topic,
+      variables,
+      promptTemplateOverride,
+    });
 
     let producedVariables = { ...baseProducedVariables };
 
