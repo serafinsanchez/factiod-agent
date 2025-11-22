@@ -1,9 +1,10 @@
 import type { ModelId } from '../../types/agent';
 
-export const DEFAULT_MODEL_ID: ModelId = 'gpt-5.1-2025-11-13';
+export const DEFAULT_MODEL_ID: ModelId = 'claude-sonnet-4.5';
 
 export const SUPPORTED_MODEL_IDS: readonly ModelId[] = [
   DEFAULT_MODEL_ID,
+  'gpt-5.1-2025-11-13',
   'kimik2-thinking',
 ] as const;
 

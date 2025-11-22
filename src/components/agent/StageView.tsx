@@ -248,6 +248,26 @@ export function StageView({
                 );
               }
 
+              if (config.id === "thumbnailGenerate") {
+                return (
+                  <div
+                    key={config.id}
+                    id={`step-${config.id}`}
+                    data-step-id={config.id}
+                    ref={(node) => {
+                      stepRefs.current[config.id] = node;
+                    }}
+                    className="space-y-4 scroll-mt-32"
+                  >
+                    <ThumbnailGenerationStep
+                      stepConfig={config}
+                      state={state}
+                      actions={actions}
+                    />
+                  </div>
+                );
+              }
+
               const isStepCollapsed = collapsedSteps[config.id] ?? true;
 
               return (
@@ -276,10 +296,6 @@ export function StageView({
                     <ScriptExtras
                       derived={derived}
                     />
-                  )}
-
-                  {!isStepCollapsed && config.id === "thumbnail" && (
-                    <ThumbnailExtras state={state} actions={actions} />
                   )}
                 </div>
               );
@@ -530,10 +546,12 @@ function NarrationAudioStep({
   );
 }
 
-function ThumbnailExtras({
+function ThumbnailGenerationStep({
+  stepConfig,
   state,
   actions,
 }: {
+  stepConfig: StepConfig;
   state: UseAgentPipelineReturn["state"];
   actions: UseAgentPipelineReturn["actions"];
 }) {
@@ -542,40 +560,76 @@ function ThumbnailExtras({
       ? `data:${state.thumbnailImage.mimeType};base64,${state.thumbnailImage.data}`
       : undefined;
   const thumbnailSrc = inlineThumbnailSrc ?? state.thumbnailImage?.url ?? undefined;
+  const promptReady = Boolean(state.pipeline.thumbnailPrompt?.trim());
+  const stepState = state.pipeline.steps[stepConfig.id];
+  const status = stepState?.status ?? "idle";
+  const isRunning = state.isGeneratingThumbnail || status === "running";
+  const statusLabel =
+    status === "success"
+      ? "Complete"
+      : status === "running"
+        ? "Generating"
+        : status === "error"
+          ? "Needs attention"
+          : "Ready";
+  const statusToneClasses =
+    status === "success"
+      ? "text-emerald-200"
+      : status === "error"
+        ? "text-rose-200"
+        : status === "running"
+          ? "text-amber-200"
+          : "text-zinc-400";
+  const buttonDisabled = isRunning || !promptReady;
+  const errorMessage = stepState?.errorMessage ?? state.thumbnailError;
 
   return (
     <div className="space-y-4 rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-            Thumbnail image
+            {stepConfig.label}
           </p>
           <p className="text-sm text-zinc-400">
-            Generate a 16:9 thumbnail prompt with Gemini 3 Pro Image Preview.
+            Render the latest thumbnail prompt with Gemini 3 Pro Image Preview.
           </p>
         </div>
-        <Button
-          variant="outline"
-          className="rounded-2xl border border-white/30 bg-transparent text-white hover:bg-white/10 disabled:opacity-60"
-          disabled={
-            state.isGeneratingThumbnail || !state.pipeline.thumbnailPrompt?.trim()
-          }
-          onClick={actions.generateThumbnail}
-        >
-          {state.isGeneratingThumbnail ? "Generating…" : "Generate thumbnail"}
-        </Button>
+        <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+          <span className={`text-[0.6rem] font-semibold uppercase tracking-[0.3em] ${statusToneClasses}`}>
+            {statusLabel}
+          </span>
+          <Button
+            variant="outline"
+            className="rounded-2xl border border-white/30 bg-transparent text-white hover:bg-white/10 disabled:opacity-60"
+            disabled={buttonDisabled}
+            onClick={actions.generateThumbnail}
+            title={
+              promptReady
+                ? undefined
+                : "Generate a thumbnail prompt before running this step."
+            }
+          >
+            {state.isGeneratingThumbnail ? "Generating…" : "Generate thumbnail"}
+          </Button>
+        </div>
       </div>
 
-      {state.thumbnailError && (
+      {!promptReady && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">
+          Create a thumbnail prompt before rendering the image.
+        </div>
+      )}
+
+      {errorMessage && (
         <div
           role="alert"
           className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-sm text-rose-100"
         >
-          {state.thumbnailError}
+          {errorMessage}
         </div>
       )}
 
-      {thumbnailSrc && (
+      {thumbnailSrc ? (
         <div className="space-y-4">
           <div className="overflow-hidden rounded-2xl border border-zinc-900">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -599,6 +653,10 @@ function ThumbnailExtras({
           </div>
 
           <ThumbnailMetricsPanel state={state} />
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-zinc-800/60 bg-zinc-950/40 p-4 text-sm text-zinc-400">
+          Run this step to render the thumbnail frame once your prompt looks good.
         </div>
       )}
     </div>

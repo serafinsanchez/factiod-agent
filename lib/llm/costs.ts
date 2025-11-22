@@ -19,6 +19,10 @@ export const PRICES: Record<ModelId, TokenPricing> = {
     cachedInput: 0.15, // USD per 1M cached input tokens (cache hit)
     output: 2.5, // USD per 1M output tokens
   },
+  'claude-sonnet-4.5': {
+    input: 3.0, // USD per 1M input tokens
+    output: 15.0, // USD per 1M output tokens
+  },
 };
 
 export function estimateCost(

@@ -288,7 +288,7 @@ Video Script:
   },
   {
     id: 'narrationAudioTags',
-    label: 'Narration Audio Tags',
+    label: 'Narration Audio Tags (for Elevenlabs v3)',
     defaultModel: DEFAULT_MODEL_ID,
     inputVars: ['NarrationScript'],
     outputVars: [],
@@ -367,6 +367,14 @@ Here is my video topic
 — [Topic] —
 Here are the key concepts
 — [KeyConcepts] —`,
+  },
+  {
+    id: 'thumbnailGenerate',
+    label: 'Generate Thumbnail',
+    defaultModel: DEFAULT_MODEL_ID,
+    inputVars: ['ThumbnailPrompt'],
+    outputVars: [],
+    promptTemplate: `This is a shell step that triggers Gemini image generation client-side once the thumbnail prompt is ready.`,
   },
 ];
 

@@ -255,6 +255,15 @@ export async function runScriptQaWithWordGoal(
     aggregatedMetrics = accumulateMetrics(aggregatedMetrics, result.metrics);
 
     const candidateScript = extractFinalScript(result.responseText).trim();
+    const normalizedResult = candidateScript
+      ? {
+          ...result,
+          producedVariables: {
+            ...result.producedVariables,
+            VideoScript: candidateScript,
+          },
+        }
+      : result;
     const candidateWordCount = candidateScript ? countWords(candidateScript) : 0;
 
     if (candidateScript) {
@@ -264,7 +273,7 @@ export async function runScriptQaWithWordGoal(
     }
 
     lastResult = {
-      ...result,
+      ...normalizedResult,
       metrics: aggregatedMetrics,
     };
 
@@ -299,7 +308,7 @@ export async function runScriptQaWithWordGoal(
     responseText: syntheticResponse,
     producedVariables: {
       ...lastResult.producedVariables,
-      VideoScript: syntheticResponse,
+      VideoScript: forcedScript,
     },
     metrics: aggregatedMetrics ?? lastResult.metrics,
   };

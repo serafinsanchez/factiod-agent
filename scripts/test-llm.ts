@@ -1,10 +1,20 @@
+import type { ModelId } from '../types/agent';
 import { callModel } from '../lib/llm/client';
 import { estimateCost } from '../lib/llm/costs';
+import { DEFAULT_MODEL_ID, getModelOptions, normalizeModelId } from '../lib/llm/models';
 
 async function main() {
   try {
     const prompt = 'Say hello in one friendly sentence.';
-    const model = 'kimik2-thinking';
+    const argModel = process.argv[2];
+    const normalizedArgModel = normalizeModelId(argModel);
+    const model: ModelId = normalizedArgModel ?? DEFAULT_MODEL_ID;
+
+    if (argModel && normalizedArgModel === undefined) {
+      console.warn(
+        `Unknown model "${argModel}". Falling back to ${DEFAULT_MODEL_ID}. Supported models: ${getModelOptions().join(', ')}`,
+      );
+    }
 
     console.log(`Sending prompt to ${model}…`);
     const result = await callModel(model, prompt);

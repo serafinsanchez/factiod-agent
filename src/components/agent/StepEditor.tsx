@@ -12,6 +12,7 @@ import {
   VARIABLE_KEY_TO_PIPELINE_FIELD,
   VARIABLE_LABELS,
 } from "@/lib/agent/variable-metadata";
+import { ensureChecklistWordCount, extractChecklist } from "@/lib/agent/checklist";
 import { cn } from "@/lib/utils";
 import type {
   PipelineState,
@@ -85,6 +86,8 @@ export function StepEditor({
       : stepState.status === "error"
         ? stepState.errorMessage ?? "Step failed."
         : stepState.responseText || "Awaiting run…";
+  const finalScriptWordCount = finalScriptStats?.words ?? null;
+
   const qaChecklistText = useMemo(() => {
     if (!isScriptQaStep) {
       return null;
@@ -98,8 +101,18 @@ export function StepEditor({
     if (!stepState.responseText) {
       return "Awaiting run…";
     }
-    return extractChecklist(stepState.responseText);
-  }, [isScriptQaStep, stepState.status, stepState.errorMessage, stepState.responseText]);
+    let checklist = extractChecklist(stepState.responseText);
+    if (finalScriptWordCount) {
+      checklist = ensureChecklistWordCount(checklist, finalScriptWordCount);
+    }
+    return checklist;
+  }, [
+    finalScriptWordCount,
+    isScriptQaStep,
+    stepState.status,
+    stepState.errorMessage,
+    stepState.responseText,
+  ]);
   const finalScriptPreview = sharedVars.videoScript?.trim();
   const finalScriptPreviewText =
     finalScriptPreview ??
@@ -592,21 +605,4 @@ function MetricTile({
   );
 }
 
-function extractChecklist(responseText: string): string {
-  const normalized = responseText.replace(/\r\n/g, "\n");
-  const lower = normalized.toLowerCase();
-  const markerIndex = lower.indexOf("final script");
-  const before = markerIndex !== -1 ? normalized.slice(0, markerIndex) : normalized;
-  const trimmed = before.trim();
-  if (!trimmed) {
-    return "Awaiting checklist…";
-  }
-
-  const checklistIndex = trimmed.toLowerCase().indexOf("checklist:");
-  if (checklistIndex !== -1) {
-    return trimmed.slice(checklistIndex).trim();
-  }
-
-  return trimmed;
-}
 

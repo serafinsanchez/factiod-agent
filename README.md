@@ -29,6 +29,17 @@ Create a `.env.local` file with the required API keys:
 - `SUPABASE_SERVICE_ROLE_KEY` – service role key (used only on the server, never expose it to the client).
 - `GEMINI_API_KEY` – for thumbnail generation.
 - `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` – for TTS (see `src/lib/tts/elevenlabs.ts`).
+- `OPENAI_API_KEY` – for the default GPT-5.1 model.
+- `MOONSHOT_API_KEY` – for the Kimi K2 Thinking model (`kimik2-thinking`).
+- `ANTHROPIC_API_KEY` – for the Claude Sonnet 4.5 model (`claude-sonnet-4.5`) via the Anthropic Messages API.
+
+After setting the keys you can dry-run individual models with:
+
+```bash
+pnpm ts-node --transpile-only scripts/test-llm.ts claude-sonnet-4.5
+```
+
+Omit the final argument to hit the Kimi model or pass any supported `ModelId`. The script prints the raw response plus token usage and the estimated cost, which is handy for verifying new keys locally.
 
 ## Supabase Configuration
 

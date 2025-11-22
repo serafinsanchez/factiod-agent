@@ -16,9 +16,12 @@ type CallModelResult = {
 const MODEL_NAME_BY_ID: Record<ModelId, string> = {
   'gpt-5.1-2025-11-13': 'gpt-5.1-2025-11-13',
   'kimik2-thinking': 'kimi-k2-thinking',
+  'claude-sonnet-4.5': 'claude-sonnet-4-5',
 };
 
 const MOONSHOT_BASE_URL = 'https://api.moonshot.ai/v1';
+const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_VERSION = '2023-06-01';
 
 type KimiContentPart =
   | string
@@ -77,6 +80,29 @@ function getOpenAIClient(): OpenAI {
 
 // Safety prompt to enforce clean output format (no reasoning in content)
 const SAFETY_SYSTEM_PROMPT = `CRITICAL OUTPUT RULE: Your response must ONLY contain the final answer that directly fulfills the request. Do not include your reasoning process, thinking steps, or explanations in your output. Output only the exact content requested, nothing more.`;
+
+type AnthropicContentBlock = {
+  type?: string;
+  text?: string;
+};
+
+type AnthropicResponse = {
+  content?: AnthropicContentBlock[];
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+  };
+};
+
+function normalizeAnthropicContent(content?: AnthropicContentBlock[]): string {
+  if (!Array.isArray(content)) {
+    return '';
+  }
+  return content
+    .map((block) => (typeof block?.text === 'string' ? block.text : ''))
+    .filter(Boolean)
+    .join('\n');
+}
 
 async function callMoonshotAPI(
   model: string,
@@ -176,11 +202,71 @@ async function callOpenAI(model: string, prompt: string): Promise<{ text: string
   }
 }
 
+async function callAnthropic(model: string, prompt: string): Promise<{ text: string; usage: Usage }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing ANTHROPIC_API_KEY environment variable.');
+  }
+
+  try {
+    const response = await fetch(ANTHROPIC_MESSAGES_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 4096,
+        system: SAFETY_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Anthropic API error ${response.status}: ${errorText || response.statusText}`);
+    }
+
+    const data = (await response.json().catch(() => {
+      throw new Error('Anthropic API returned invalid JSON.');
+    })) as AnthropicResponse;
+
+    const text = normalizeAnthropicContent(data.content);
+    const promptTokens = data.usage?.input_tokens ?? 0;
+    const completionTokens = data.usage?.output_tokens ?? 0;
+
+    const usage: Usage = {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: promptTokens + completionTokens,
+    };
+
+    return { text, usage };
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Anthropic API')) {
+      throw error;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Anthropic API request failed: ${message}`);
+  }
+}
+
 export async function callModel(model: ModelId, prompt: string): Promise<CallModelResult> {
   const modelName = MODEL_NAME_BY_ID[model];
 
   if (model === 'kimik2-thinking') {
     return callMoonshotAPI(modelName, prompt);
+  }
+
+  if (model === 'claude-sonnet-4.5') {
+    return callAnthropic(modelName, prompt);
   }
 
   return callOpenAI(modelName, prompt);

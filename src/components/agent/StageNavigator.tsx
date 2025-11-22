@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { VariableStatusBadge } from "./VariableStatusBadge";
 import type { StageDefinition, StageId } from "./stage-config";
@@ -50,6 +50,7 @@ interface StageNavigatorProps {
     totalCostUsd: number;
     llmRuntimeSeconds?: number | null;
   };
+  onCollapseChange?: (collapsed: boolean) => void;
 }
 
 export const STATUS_STYLES: Record<StageTone, { text: string; dot: string; bar: string }> = {
@@ -115,6 +116,7 @@ export function StageNavigator({
   onEditVariable,
   exportActions,
   sessionTotals,
+  onCollapseChange,
 }: StageNavigatorProps) {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [areVariablesCollapsed, setAreVariablesCollapsed] = useState(false);
@@ -125,6 +127,10 @@ export function StageNavigator({
     });
     return initial;
   });
+
+  useEffect(() => {
+    onCollapseChange?.(isCollapsed);
+  }, [isCollapsed, onCollapseChange]);
 
   const stepConfigMap = useMemo(
     () =>
@@ -151,11 +157,12 @@ export function StageNavigator({
   const topicInputId = "workflow-topic-input";
   const variableListId = "workflow-variable-list";
   const paddingClass =
-    variant === "sidebar" ? (isCollapsed ? "p-3" : "p-5") : "p-5";
+    variant === "sidebar" ? (isCollapsed ? "p-1" : "p-0") : "p-5";
+  const collapsedWidthClass = "lg:w-fit lg:min-w-[52px]";
   const widthClass =
     variant === "sidebar"
       ? isCollapsed
-        ? "lg:w-[120px]"
+        ? collapsedWidthClass
         : "lg:w-[320px]"
       : "";
   const containerClass = cn(
@@ -166,6 +173,8 @@ export function StageNavigator({
     widthClass,
     className,
   );
+  const drawerId = `${variant}-workflow-drawer`;
+  const toggleLabel = isCollapsed ? "Open workflow drawer" : "Close workflow drawer";
 
   const handleStageToggle = (stageId: StageId) => {
     setExpandedStages((prev) => {
@@ -179,25 +188,18 @@ export function StageNavigator({
   };
 
   return (
-    <div className={containerClass}>
+    <div className={containerClass} id={drawerId}>
       <div className="flex items-start justify-between gap-3">
-        {(!isCollapsed || !showSidebarExtras) && (
-          <div>
-            <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-              Workflow
-            </p>
-            <p className="text-sm text-zinc-400">
-              Jump between stages and steps without leaving your place.
-            </p>
-          </div>
-        )}
         <button
           type="button"
           onClick={() => setIsCollapsed((value) => !value)}
-          className="rounded-full border border-zinc-800 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-300 hover:border-zinc-600 hover:text-white"
-          aria-pressed={!isCollapsed}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-800 text-zinc-300 transition hover:border-zinc-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+          aria-controls={drawerId}
+          aria-expanded={!isCollapsed}
+          aria-label={toggleLabel}
         >
-          {isCollapsed ? "Show" : "Hide"}
+          <DrawerToggleIcon isOpen={!isCollapsed} />
+          <span className="sr-only">{toggleLabel}</span>
         </button>
       </div>
 
@@ -507,6 +509,42 @@ function ChevronIcon({ className }: { className?: string }) {
     >
       <path
         d="M6 9l6 6 6-6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function DrawerToggleIcon({ isOpen }: { isOpen: boolean }) {
+  return (
+    <svg
+      className={cn("h-4 w-4 text-current transition duration-300", isOpen ? "rotate-0" : "rotate-180")}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-hidden="true"
+    >
+      <rect
+        x="3.75"
+        y="4.75"
+        width="16.5"
+        height="14.5"
+        rx="2.25"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M10.5 4.5v15"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d={isOpen ? "M14 9l4 3.5L14 16" : "M13 9l-4 3.5L13 16"}
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"

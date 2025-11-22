@@ -1,4 +1,4 @@
-export type ModelId = 'gpt-5.1-2025-11-13' | 'kimik2-thinking';
+export type ModelId = 'claude-sonnet-4.5' | 'gpt-5.1-2025-11-13' | 'kimik2-thinking';
 export type NarrationModelId = 'eleven_v3' | 'eleven_multilingual_v2';
 
 export type StepId =
@@ -11,7 +11,8 @@ export type StepId =
   | 'narrationAudioTags'
   | 'narrationAudio'
   | 'titleDescription'
-  | 'thumbnail';
+  | 'thumbnail'
+  | 'thumbnailGenerate';
 
 export type VariableKey =
   | 'Topic'

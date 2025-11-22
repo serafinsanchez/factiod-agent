@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useMemo, useState } from "react";
 
 import { ProjectSidebar } from "./ProjectSidebar";
@@ -12,7 +13,6 @@ import type { UseAgentPipelineReturn } from "@/hooks/use-agent-pipeline";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   RadioGroup,
   RadioGroupItem,
@@ -25,9 +25,14 @@ import {
   getVariableValueFromPipeline,
 } from "@/lib/agent/variable-metadata";
 import { cn } from "@/lib/utils";
-import type { StepId, VariableKey } from "@/types/agent";
+import type { ModelId, StepId, VariableKey } from "@/types/agent";
 
 const MODEL_OPTIONS = getModelOptions();
+const MODEL_LABELS: Record<ModelId, string> = {
+  "gpt-5.1-2025-11-13": "GPT 5.1",
+  "kimik2-thinking": "Kimi K2",
+  "claude-sonnet-4.5": "Claude Sonnet 4.5",
+};
 
 type AgentShellProps = {
   state: UseAgentPipelineReturn["state"];
@@ -48,7 +53,6 @@ export function AgentShell({
     pipeline,
     historyProjects,
     selectedProjectId,
-    isLoadingHistory,
     historyError,
     deleteError,
     isDeletingProjectId,
@@ -59,6 +63,7 @@ export function AgentShell({
 
   const hasTopic = Boolean(pipeline.topic.trim());
   const [editingVariable, setEditingVariable] = useState<VariableKey | null>(null);
+  const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(true);
   const [visibleStepId, setVisibleStepId] = useState<StepId | null>(null);
 
   const editorInitialValue = useMemo(() => {
@@ -105,16 +110,15 @@ export function AgentShell({
     currentPipelineId: pipeline.id ?? null,
     currentTopic: pipeline.topic,
     isSavingCurrentProject: isSavingProject,
-    isLoading: isLoadingHistory,
     isDeletingProjectId,
     historyError,
     deleteError,
     saveError,
     onNewProject: handleNewProject,
-    onRefresh: actions.refreshHistory,
     onSelectProject: actions.selectProject,
     onDeleteProject: actions.deleteProject,
     onSaveProject: actions.saveProject,
+    defaultCollapsed: true,
   };
 
   const handleStageSelect = (stageId: StageId) => {
@@ -148,17 +152,29 @@ export function AgentShell({
     [activeStageId, onStageChangeAction, stepToStageMap],
   );
 
+  const desktopSidebarClass = cn(
+    "hidden md:flex md:flex-col md:flex-none transition-all duration-300",
+    isProjectSidebarCollapsed
+      ? "md:w-fit md:min-w-[60px] md:px-1 md:py-1 md:border md:border-zinc-900/70 md:bg-zinc-950/85 md:rounded-3xl md:shadow-[0_25px_80px_-40px_rgba(0,0,0,0.75)]"
+      : "md:w-[260px] md:px-4 md:py-8 md:border-r md:border-zinc-900/70 md:bg-zinc-950/80",
+  );
+
   return (
     <div className="flex min-h-screen bg-zinc-950/98 text-zinc-100">
-      <aside className="hidden md:flex md:w-[260px] md:flex-none md:flex-col md:border-r md:border-zinc-900/70 md:bg-zinc-950/80 md:px-4 md:py-8">
-        <ProjectSidebar
-          {...sidebarProps}
-          className="h-full rounded-none border-none bg-transparent p-0 shadow-none"
-        />
+      <aside className={desktopSidebarClass}>
+        <div className="sticky top-6">
+          <div className="max-h-[calc(100vh-3rem)] overflow-y-auto overscroll-contain pr-2 scrollbar-hide">
+            <ProjectSidebar
+              {...sidebarProps}
+              className="h-full rounded-none border-none bg-transparent p-0 shadow-none"
+              onCollapseChange={setIsProjectSidebarCollapsed}
+            />
+          </div>
+        </div>
       </aside>
 
       <div className="flex-1">
-        <div className="flex w-full flex-col gap-8 px-4 py-8 md:px-6 lg:px-10 xl:px-16 2xl:px-24">
+        <div className="flex w-full flex-col gap-8 px-4 py-8 md:px-6 lg:pl-10 lg:pr-0 xl:pl-16 xl:pr-0 2xl:pl-24 2xl:pr-0">
           <div className="md:hidden">
             <ProjectSidebar {...sidebarProps} />
           </div>
@@ -167,22 +183,28 @@ export function AgentShell({
             <div className="flex flex-col gap-8">
               <Card className="border border-zinc-900/60 bg-zinc-950/80 shadow-[0_30px_120px_-60px_rgba(0,0,0,0.85)]">
                 <CardContent className="p-6 sm:p-8">
-                  <div className="flex flex-col gap-10 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] lg:items-center lg:gap-12">
-                    <div className="space-y-4">
-                      <div className="space-y-3">
-                        <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                          Agentic Kids Video Builder
-                        </h1>
-                        <p className="max-w-2xl text-sm text-zinc-400">
-                          Start with a kid-friendly topic, pick how much reasoning power you need, and we’ll guide you through each stage of the pipeline with guardrails.
-                        </p>
-                      </div>
+                  <div className="flex flex-col items-center gap-8 text-center">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-center gap-4">
+                      <Image
+                        src="/goally-penguin-logo-sunglasses-short-only.png.webp"
+                        width={177}
+                        height={199}
+                        alt="Penguin mascot wearing sunglasses"
+                        className="h-12 w-auto drop-shadow-[0_8px_20px_rgba(0,0,0,0.55)] sm:h-16"
+                        sizes="(min-width: 640px) 64px, 48px"
+                        priority
+                      />
+                      <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                        Factoids Video Generator
+                      </h1>
                     </div>
+                  </div>
 
-                    <div className="space-y-5 rounded-3xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                    <div className="w-full max-w-3xl space-y-6 rounded-3xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                       <div className="space-y-2">
                         <RadioGroup
-                          className="flex flex-wrap gap-2"
+                          className="flex flex-wrap justify-center gap-2"
                           value={pipeline.model}
                           onValueChange={(value) => {
                             actions.setModel(value as typeof pipeline.model);
@@ -207,35 +229,21 @@ export function AgentShell({
                                   pipeline.model === option && "border-white text-white",
                                 )}
                               />
-                              <span>{option.replace("-thinking", "")}</span>
+                              <span>{MODEL_LABELS[option] ?? option}</span>
                             </label>
                           ))}
                         </RadioGroup>
                       </div>
 
-                      <div className="space-y-3">
-                        <Label
-                          htmlFor="agent-topic"
-                          className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-white"
-                        >
-                          Topic
-                        </Label>
-                        <div className="flex flex-col gap-3 sm:flex-row">
-                          <Input
-                            id="agent-topic"
-                            placeholder="e.g. Why the moon changes shape"
-                            value={pipeline.topic}
-                            onChange={(event) => actions.setTopic(event.target.value)}
-                            className="h-12 flex-1 rounded-2xl border-zinc-50/10 bg-zinc-900 text-base text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-white/60"
-                          />
-                          <Button
-                            onClick={actions.runAll}
-                            disabled={isRunningAll || !hasTopic}
-                            className="h-12 rounded-2xl bg-white text-sm font-semibold uppercase tracking-[0.2em] text-zinc-900 hover:bg-zinc-200 disabled:opacity-60"
-                          >
-                            {isRunningAll ? "Running…" : "Run pipeline"}
-                          </Button>
-                        </div>
+                      <div className="space-y-4">
+                        <Input
+                          id="agent-topic"
+                          placeholder="e.g. Why the moon changes shape"
+                          value={pipeline.topic}
+                          onChange={(event) => actions.setTopic(event.target.value)}
+                          className="mx-auto h-14 w-full max-w-xl rounded-full border border-white/15 bg-zinc-900/80 px-6 text-lg text-white placeholder:text-zinc-500 shadow-[0_25px_80px_rgba(0,0,0,0.65)] focus-visible:ring-2 focus-visible:ring-white/70"
+                        />
+                        {/* Run pipeline button intentionally hidden for now (user request) */}
                       </div>
                     </div>
                   </div>
@@ -295,6 +303,7 @@ export function AgentShell({
                 <div className="max-h-[calc(100vh-3rem)] overflow-y-auto overscroll-contain pr-2 scrollbar-hide">
                   <StageNavigator
                     variant="sidebar"
+                    defaultCollapsed
                     stages={STAGES}
                     stepConfigs={STEP_CONFIGS}
                     activeStageId={activeStageId}

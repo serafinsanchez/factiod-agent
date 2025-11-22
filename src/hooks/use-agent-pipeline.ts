@@ -65,6 +65,31 @@ function createInitialPipeline(): PipelineState {
   };
 }
 
+function calculateStepTotals(steps: Record<StepId, StepRunState>) {
+  return Object.values(steps).reduce(
+    (acc, step) => {
+      acc.totalTokens += step.metrics?.totalTokens ?? 0;
+      acc.totalCostUsd += step.metrics?.costUsd ?? 0;
+      return acc;
+    },
+    { totalTokens: 0, totalCostUsd: 0 },
+  );
+}
+
+function ensureStepState(
+  steps: Record<StepId, StepRunState>,
+  stepId: StepId,
+): StepRunState {
+  return (
+    steps[stepId] ?? {
+      id: stepId,
+      status: "idle",
+      resolvedPrompt: "",
+      responseText: "",
+    }
+  );
+}
+
 const PIPELINE_STORAGE_KEY = "pipeline:v1";
 const DEFAULT_NARRATION_MODEL: NarrationModelId = "eleven_v3";
 const AUTO_SAVE_ERROR_PREFIX = "Auto-save failed:";
@@ -91,13 +116,17 @@ function loadInitialPipeline(): PipelineState {
         if (isPipelineState(parsed)) {
           const base = createInitialPipeline();
           const normalizedModel = normalizeModelId(parsed.model) ?? DEFAULT_MODEL_ID;
+          const trimmedTopic =
+            typeof parsed.topic === "string" ? parsed.topic.trim() : "";
+          const resolvedModel =
+            trimmedTopic.length > 0 ? normalizedModel : DEFAULT_MODEL_ID;
           const normalizedNarrationModel = normalizeNarrationModelId(
             parsed.narrationModelId,
           );
           return {
             ...base,
             ...parsed,
-            model: normalizedModel,
+            model: resolvedModel,
             narrationModelId: normalizedNarrationModel,
             steps: {
               ...base.steps,
@@ -430,7 +459,7 @@ export function useAgentPipeline() {
           ...prev.steps,
           narrationAudio: {
             ...narrationAudioStep,
-            status: "idle",
+            status: "idle" as const,
             errorMessage: undefined,
             metrics: undefined,
           },
@@ -547,7 +576,7 @@ export function useAgentPipeline() {
             ...prev.steps,
             [stepId]: {
               ...prev.steps[stepId],
-              status: "error",
+              status: "error" as const,
               errorMessage: "Please enter a topic before running this step.",
             },
           },
@@ -589,7 +618,7 @@ export function useAgentPipeline() {
           ...prev.steps,
           [stepId]: {
             ...prev.steps[stepId],
-            status: "running",
+            status: "running" as const,
             errorMessage: undefined,
           },
         },
@@ -673,12 +702,12 @@ export function useAgentPipeline() {
               ...prev.steps,
               narrationClean: {
                 ...prev.steps.narrationClean,
-                status: "running",
+                status: "running" as const,
                 errorMessage: undefined,
               },
               narrationAudioTags: {
                 ...prev.steps.narrationAudioTags,
-                status: "idle",
+                status: "idle" as const,
                 errorMessage: undefined,
               },
             },
@@ -754,7 +783,7 @@ export function useAgentPipeline() {
                     ...prev.steps,
                     narrationAudioTags: {
                       ...prev.steps.narrationAudioTags,
-                      status: "running",
+                      status: "running" as const,
                       errorMessage: undefined,
                     },
                   },
@@ -840,7 +869,7 @@ export function useAgentPipeline() {
                       ...prev.steps,
                       narrationAudioTags: {
                         ...prev.steps.narrationAudioTags,
-                        status: "error",
+                        status: "error" as const,
                         errorMessage: message,
                       },
                     },
@@ -863,7 +892,7 @@ export function useAgentPipeline() {
                 ...prev.steps,
                 narrationClean: {
                   ...prev.steps.narrationClean,
-                  status: "error",
+                  status: "error" as const,
                   errorMessage: message,
                 },
               },
@@ -888,7 +917,7 @@ export function useAgentPipeline() {
               ...prev.steps,
               scriptQA: {
                 ...prev.steps.scriptQA,
-                status: "running",
+                status: "running" as const,
                 errorMessage: undefined,
               },
             },
@@ -975,7 +1004,7 @@ export function useAgentPipeline() {
                 ...prev.steps,
                 scriptQA: {
                   ...prev.steps.scriptQA,
-                  status: "error",
+                  status: "error" as const,
                   errorMessage: message,
                 },
               },
@@ -1002,7 +1031,7 @@ export function useAgentPipeline() {
             ...prev.steps,
             [stepId]: {
               ...prev.steps[stepId],
-              status: "error",
+              status: "error" as const,
               errorMessage: message,
             },
           },
@@ -1037,7 +1066,7 @@ export function useAgentPipeline() {
             ...prev.steps,
             narrationAudio: {
               ...prev.steps.narrationAudio,
-              status: "error",
+              status: "error" as const,
               errorMessage: fallbackError,
             },
           },
@@ -1066,7 +1095,7 @@ export function useAgentPipeline() {
           ...prev.steps,
           narrationAudio: {
             ...prev.steps.narrationAudio,
-            status: "running",
+            status: "running" as const,
             errorMessage: undefined,
             resolvedPrompt: "",
             responseText: "",
@@ -1117,7 +1146,7 @@ export function useAgentPipeline() {
             ...prev.steps,
             narrationAudio: {
               ...prev.steps.narrationAudio,
-              status: "success",
+              status: "success" as const,
               errorMessage: undefined,
             },
           },
@@ -1133,7 +1162,7 @@ export function useAgentPipeline() {
             ...prev.steps,
             narrationAudio: {
               ...prev.steps.narrationAudio,
-              status: "error",
+              status: "error" as const,
               errorMessage: message,
             },
           },
@@ -1154,7 +1183,7 @@ export function useAgentPipeline() {
           ...prev.steps,
           keyConcepts: {
             ...prev.steps.keyConcepts,
-            status: "error",
+            status: "error" as const,
             errorMessage: "Please enter a topic before running.",
           },
         },
@@ -1221,7 +1250,7 @@ export function useAgentPipeline() {
           ...prev.steps,
           keyConcepts: {
             ...prev.steps.keyConcepts,
-            status: "error",
+            status: "error" as const,
             errorMessage: message,
           },
         },
@@ -1426,21 +1455,55 @@ export function useAgentPipeline() {
   const generateThumbnail = useCallback(async () => {
     const prompt = pipeline.thumbnailPrompt?.trim();
     if (!prompt) {
+      const message = "Create a thumbnail prompt before rendering the image.";
+      setThumbnailError(message);
+      setPipeline((prev) => {
+        const nextSteps = {
+          ...prev.steps,
+          thumbnailGenerate: {
+            ...ensureStepState(prev.steps, "thumbnailGenerate"),
+            status: "error" as const,
+            errorMessage: message,
+          },
+        };
+        const totals = calculateStepTotals(nextSteps);
+        return {
+          ...prev,
+          steps: nextSteps,
+          totalTokens: totals.totalTokens,
+          totalCostUsd: totals.totalCostUsd,
+        };
+      });
       return;
     }
 
     const projectSlug = getOrCreateProjectSlug(pipeline.projectSlug, pipeline.topic);
     const thumbnailPath = buildProjectThumbnailPath(projectSlug, { unique: true });
 
-    setPipeline((prev) => ({
-      ...prev,
-      projectSlug,
-    }));
-
     setIsGeneratingThumbnail(true);
     setThumbnailError(null);
     setThumbnailGenerationTime(null);
     setThumbnailMetrics(null);
+
+    setPipeline((prev) => {
+      const nextSteps = {
+        ...prev.steps,
+        thumbnailGenerate: {
+          ...ensureStepState(prev.steps, "thumbnailGenerate"),
+          status: "running" as const,
+          resolvedPrompt: prompt,
+          errorMessage: undefined,
+        },
+      };
+      const totals = calculateStepTotals(nextSteps);
+      return {
+        ...prev,
+        projectSlug,
+        steps: nextSteps,
+        totalTokens: totals.totalTokens,
+        totalCostUsd: totals.totalCostUsd,
+      };
+    });
 
     const startTime = performance.now();
 
@@ -1463,34 +1526,84 @@ export function useAgentPipeline() {
           ? getPublicProjectFileUrl(storagePath)
           : data.thumbnailUrl;
       const versionedUrl = createCacheBustedUrl(publicUrl);
-
-      if (typeof storagePath === "string" && storagePath.trim().length > 0) {
-        setPipeline((prev) => {
-          const nextPipeline = {
-            ...prev,
-            thumbnailPath: storagePath,
-          };
-          pipelineRef.current = nextPipeline;
-          return nextPipeline;
-        });
-      }
+      const durationMs = performance.now() - startTime;
+      const usage = data.usage;
+      const usageInputTokens =
+        typeof usage?.promptTokens === "number" ? usage.promptTokens : null;
+      const usageOutputTokens =
+        typeof usage?.outputTokens === "number" ? usage.outputTokens : null;
+      const usageTotalTokens =
+        typeof usage?.totalTokens === "number" ? usage.totalTokens : null;
+      const reportedCostUsd =
+        typeof data.costUsd === "number" ? data.costUsd : null;
 
       setThumbnailImage({
         data: data.imageBase64,
         mimeType: data.mimeType,
         url: versionedUrl ?? undefined,
       });
-      setThumbnailGenerationTime(performance.now() - startTime);
-      const usage = data.usage;
+      setThumbnailGenerationTime(durationMs);
       setThumbnailMetrics({
-        inputTokens: typeof usage?.promptTokens === "number" ? usage.promptTokens : null,
-        outputTokens: typeof usage?.outputTokens === "number" ? usage.outputTokens : null,
-        totalTokens: typeof usage?.totalTokens === "number" ? usage.totalTokens : null,
-        costUsd: typeof data.costUsd === "number" ? data.costUsd : null,
+        inputTokens: usageInputTokens,
+        outputTokens: usageOutputTokens,
+        totalTokens: usageTotalTokens,
+        costUsd: reportedCostUsd,
       });
+
+      setPipeline((prev) => {
+        const nextSteps = {
+          ...prev.steps,
+          thumbnailGenerate: {
+            ...ensureStepState(prev.steps, "thumbnailGenerate"),
+            resolvedPrompt: prompt,
+            responseText: versionedUrl ?? data.thumbnailPath ?? "",
+            status: "success" as const,
+            metrics: {
+              inputTokens: usageInputTokens ?? 0,
+              outputTokens: usageOutputTokens ?? 0,
+              totalTokens:
+                usageTotalTokens ?? usageInputTokens ?? usageOutputTokens ?? 0,
+              costUsd: reportedCostUsd ?? 0,
+              durationMs,
+            },
+            errorMessage: undefined,
+          },
+        };
+        const totals = calculateStepTotals(nextSteps);
+        const nextPipeline: PipelineState = {
+          ...prev,
+          steps: nextSteps,
+          totalTokens: totals.totalTokens,
+          totalCostUsd: totals.totalCostUsd,
+        };
+        if (typeof storagePath === "string" && storagePath.trim().length > 0) {
+          nextPipeline.thumbnailPath = storagePath;
+        }
+        pipelineRef.current = nextPipeline;
+        return nextPipeline;
+      });
+
       queueAutoSave();
     } catch (err) {
-      setThumbnailError(err instanceof Error ? err.message : "Unknown error");
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setThumbnailError(message);
+      setPipeline((prev) => {
+        const nextSteps = {
+          ...prev.steps,
+          thumbnailGenerate: {
+            ...ensureStepState(prev.steps, "thumbnailGenerate"),
+            status: "error" as const,
+            errorMessage: message,
+          },
+        };
+        const totals = calculateStepTotals(nextSteps);
+        return {
+          ...prev,
+          steps: nextSteps,
+          totalTokens: totals.totalTokens,
+          totalCostUsd: totals.totalCostUsd,
+        };
+      });
     } finally {
       setIsGeneratingThumbnail(false);
     }

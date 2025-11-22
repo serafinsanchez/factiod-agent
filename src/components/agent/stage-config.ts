@@ -12,22 +12,22 @@ export interface StageDefinition {
 export const STAGES: StageDefinition[] = [
   {
     id: "plan",
-    label: "Stage 1 – Plan & Hook",
+    label: "Plan & Hook",
     description: "Define key concepts, hook, and quizzes that shape the lesson.",
     steps: ["keyConcepts", "hook", "quizzes"],
   },
   {
     id: "script",
-    label: "Stage 2 – Script & Narration",
+    label: "Script & Narration",
     description:
       "Generate the script, run QA, clean narration, add audio tags, and then render the ElevenLabs voiceover.",
     steps: ["script", "scriptQA", "narrationClean", "narrationAudioTags", "narrationAudio"],
   },
   {
     id: "publish",
-    label: "Stage 3 – Title, Description & Thumbnail",
+    label: "Title, Description & Thumbnail",
     description: "Create packaging that helps the video perform on YouTube.",
-    steps: ["titleDescription", "thumbnail"],
+    steps: ["titleDescription", "thumbnail", "thumbnailGenerate"],
   },
 ];
 
