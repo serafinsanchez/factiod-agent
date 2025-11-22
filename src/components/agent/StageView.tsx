@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { StepEditor } from "./StepEditor";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ interface StageViewProps {
   onEditVariable?: (variable: VariableKey) => void;
   onVisibleStepChange?: (stepId: StepId | null) => void;
   onVisibleStageChange?: (stageId: StageId) => void;
+  collapsedSteps: Record<StepId, boolean>;
+  onStepCollapseChange: (stepId: StepId, collapsed: boolean) => void;
 }
 
 export function StageView({
@@ -43,14 +45,13 @@ export function StageView({
   onEditVariable,
   onVisibleStepChange,
   onVisibleStageChange,
+  collapsedSteps,
+  onStepCollapseChange,
 }: StageViewProps) {
   const stepRefs = useRef<Record<StepId, HTMLElement | null>>({} as Record<StepId, HTMLElement | null>);
   const stageRefs = useRef<Record<StageId, HTMLElement | null>>({} as Record<StageId, HTMLElement | null>);
   const lastVisibleStep = useRef<StepId | null>(null);
   const lastVisibleStage = useRef<StageId | null>(null);
-  const [collapsedSteps, setCollapsedSteps] = useState<Record<StepId, boolean>>(
-    {} as Record<StepId, boolean>,
-  );
 
   const stepConfigMap = useMemo(
     () =>
@@ -80,16 +81,6 @@ export function StageView({
     () => stageEntries.flatMap((entry) => entry.steps),
     [stageEntries],
   );
-
-  const toggleStepCollapse = (stepId: StepId) => {
-    setCollapsedSteps((prev) => {
-      const current = typeof prev[stepId] === "boolean" ? prev[stepId] : true;
-      return {
-        ...prev,
-        [stepId]: !current,
-      };
-    });
-  };
 
   useEffect(() => {
     if (!onVisibleStepChange) {
@@ -289,7 +280,7 @@ export function StageView({
                     onPromptChange={actions.setPromptOverride}
                     onEditVariable={onEditVariable}
                     isCollapsed={isStepCollapsed}
-                    onToggleCollapse={() => toggleStepCollapse(config.id)}
+                    onToggleCollapse={() => onStepCollapseChange(config.id, !isStepCollapsed)}
                   />
 
                   {!isStepCollapsed && config.id === "script" && (

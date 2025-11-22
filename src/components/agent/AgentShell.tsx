@@ -65,6 +65,13 @@ export function AgentShell({
   const [editingVariable, setEditingVariable] = useState<VariableKey | null>(null);
   const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(true);
   const [visibleStepId, setVisibleStepId] = useState<StepId | null>(null);
+  const [collapsedSteps, setCollapsedSteps] = useState<Record<StepId, boolean>>(() => {
+    const initial: Record<StepId, boolean> = {} as Record<StepId, boolean>;
+    STEP_CONFIGS.forEach((config) => {
+      initial[config.id] = true;
+    });
+    return initial;
+  });
 
   const editorInitialValue = useMemo(() => {
     if (!editingVariable) {
@@ -137,6 +144,40 @@ export function AgentShell({
     const element = document.getElementById(`step-${stepId}`);
     element?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
+
+  const handleStepCollapseChange = useCallback((stepId: StepId, collapsed: boolean) => {
+    setCollapsedSteps((prev) => {
+      if (prev[stepId] === collapsed) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [stepId]: collapsed,
+      };
+    });
+  }, []);
+
+  const setAllStepsCollapsed = useCallback((collapsed: boolean) => {
+    setCollapsedSteps((prev) => {
+      let changed = false;
+      const next: Record<StepId, boolean> = { ...prev };
+      STEP_CONFIGS.forEach((config) => {
+        if (next[config.id] !== collapsed) {
+          next[config.id] = collapsed;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  const handleExpandAllSteps = useCallback(() => {
+    setAllStepsCollapsed(false);
+  }, [setAllStepsCollapsed]);
+
+  const handleCollapseAllSteps = useCallback(() => {
+    setAllStepsCollapsed(true);
+  }, [setAllStepsCollapsed]);
 
   const handleVisibleStepChange = useCallback(
     (stepId: StepId | null) => {
@@ -259,6 +300,8 @@ export function AgentShell({
                   stepStates={state.pipeline.steps}
                   onSelectStage={handleStageSelect}
                   onSelectStep={handleStepJump}
+                  onExpandAllSteps={handleExpandAllSteps}
+                  onCollapseAllSteps={handleCollapseAllSteps}
                   exportActions={{
                     onExportFiles: actions.exportFiles,
                     onExportScript: actions.exportScriptMarkdown,
@@ -290,6 +333,8 @@ export function AgentShell({
                   actions={actions}
                   onEditVariable={(variable) => setEditingVariable(variable)}
                   onVisibleStepChange={handleVisibleStepChange}
+                  collapsedSteps={collapsedSteps}
+                  onStepCollapseChange={handleStepCollapseChange}
                 />
               </section>
 
@@ -311,6 +356,8 @@ export function AgentShell({
                     stepStates={state.pipeline.steps}
                     onSelectStage={handleStageSelect}
                     onSelectStep={handleStepJump}
+                    onExpandAllSteps={handleExpandAllSteps}
+                    onCollapseAllSteps={handleCollapseAllSteps}
                     topicInput={{
                       value: pipeline.topic,
                       onChange: (value) => actions.setTopic(value),

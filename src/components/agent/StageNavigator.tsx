@@ -51,6 +51,8 @@ interface StageNavigatorProps {
     llmRuntimeSeconds?: number | null;
   };
   onCollapseChange?: (collapsed: boolean) => void;
+  onExpandAllSteps?: () => void;
+  onCollapseAllSteps?: () => void;
 }
 
 export const STATUS_STYLES: Record<StageTone, { text: string; dot: string; bar: string }> = {
@@ -117,6 +119,8 @@ export function StageNavigator({
   exportActions,
   sessionTotals,
   onCollapseChange,
+  onExpandAllSteps,
+  onCollapseAllSteps,
 }: StageNavigatorProps) {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [areVariablesCollapsed, setAreVariablesCollapsed] = useState(false);
@@ -175,6 +179,7 @@ export function StageNavigator({
   );
   const drawerId = `${variant}-workflow-drawer`;
   const toggleLabel = isCollapsed ? "Open workflow drawer" : "Close workflow drawer";
+  const showStepToggleButtons = !isCollapsed && (onExpandAllSteps || onCollapseAllSteps);
 
   const handleStageToggle = (stageId: StageId) => {
     setExpandedStages((prev) => {
@@ -189,18 +194,20 @@ export function StageNavigator({
 
   return (
     <div className={containerClass} id={drawerId}>
-      <div className="flex items-start justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => setIsCollapsed((value) => !value)}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-800 text-zinc-300 transition hover:border-zinc-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-          aria-controls={drawerId}
-          aria-expanded={!isCollapsed}
-          aria-label={toggleLabel}
-        >
-          <DrawerToggleIcon isOpen={!isCollapsed} />
-          <span className="sr-only">{toggleLabel}</span>
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <button
+            type="button"
+            onClick={() => setIsCollapsed((value) => !value)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-800 text-zinc-300 transition hover:border-zinc-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            aria-controls={drawerId}
+            aria-expanded={!isCollapsed}
+            aria-label={toggleLabel}
+          >
+            <DrawerToggleIcon isOpen={!isCollapsed} />
+            <span className="sr-only">{toggleLabel}</span>
+          </button>
+        </div>
       </div>
 
       {!isCollapsed && showSidebarExtras && topicInput && (
@@ -273,6 +280,33 @@ export function StageNavigator({
           )}
         </div>
       ) : null}
+
+      {!isCollapsed && showStepToggleButtons && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-900/80 bg-zinc-950/60 p-3">
+          {onExpandAllSteps && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={onExpandAllSteps}
+              className="flex-1 rounded-full border-zinc-800/70 bg-zinc-900/40 px-4 text-[0.6rem] font-semibold uppercase tracking-[0.3em] text-zinc-200 hover:border-white/40 hover:bg-white/10 hover:text-white"
+            >
+              Expand all
+            </Button>
+          )}
+          {onCollapseAllSteps && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={onCollapseAllSteps}
+              className="flex-1 rounded-full border-zinc-800/70 bg-zinc-900/40 px-4 text-[0.6rem] font-semibold uppercase tracking-[0.3em] text-zinc-200 hover:border-white/40 hover:bg-white/10 hover:text-white"
+            >
+              Collapse all
+            </Button>
+          )}
+        </div>
+      )}
 
       {!isCollapsed && (
         <div className="space-y-3" role="navigation" aria-label="Workflow stages">
