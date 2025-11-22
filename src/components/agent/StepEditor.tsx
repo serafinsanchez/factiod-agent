@@ -421,12 +421,9 @@ export function StepEditor({
               Final script stats
             </p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <MetricTile label="Word count" value={finalScriptStats.words.toLocaleString()} />
-              <MetricTile label="Character count" value={finalScriptStats.characters.toLocaleString()} />
+              <MetricTile label="Word count after QA" value={finalScriptStats.words.toLocaleString()} />
+              <MetricTile label="Character count after QA" value={finalScriptStats.characters.toLocaleString()} />
             </div>
-            <p className="mt-2 text-xs text-white/80">
-              Counts include the QA-improved script only (checklist excluded).
-            </p>
           </div>
         )}
 

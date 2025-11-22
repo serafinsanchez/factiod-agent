@@ -87,7 +87,7 @@ You will be given the following inputs:
 
 ## Style & Length Rules
 
-- **Target length:** about 9 minutes read aloud (**minimum ~1,600 words**).
+- **Target length:** about 8 minutes read aloud (**maximum ~1,600 words**).
 - Write in smooth, natural sentences, with lots of punctuation to support the narrator.
 - **Avoid** baby talk and cheesy greetings (like “Hey kiddos!!!”).
 - Keep the tone warm, smart, energetic, and respectful.

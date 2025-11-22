@@ -92,6 +92,7 @@ function ensureStepState(
 
 const PIPELINE_STORAGE_KEY = "pipeline:v1";
 const DEFAULT_NARRATION_MODEL: NarrationModelId = "eleven_v3";
+const TTS_COST_PER_THOUSAND_CHARS_USD = 0.3;
 const AUTO_SAVE_ERROR_PREFIX = "Auto-save failed:";
 
 function isPipelineState(value: unknown): value is PipelineState {
@@ -384,6 +385,20 @@ export function useAgentPipeline() {
     scriptAudioGenerationTimeMs !== null ||
     thumbnailGenerationTime !== null;
 
+  const scriptDraftStats = useMemo(() => {
+    const raw = pipeline.steps.script?.responseText;
+    if (typeof raw !== "string") {
+      return null;
+    }
+    const text = raw.trim();
+    if (!text) {
+      return null;
+    }
+    const words = text.split(/\s+/).filter(Boolean).length;
+    const characters = text.length;
+    return { words, characters };
+  }, [pipeline.steps.script?.responseText]);
+
   const videoScriptStats = useMemo(() => {
     const raw = pipeline.videoScript;
     if (typeof raw !== "string") {
@@ -488,6 +503,29 @@ export function useAgentPipeline() {
   }, [pipeline.audioPath]);
 
   useEffect(() => {
+    if (!scriptAudioUrl) {
+      return;
+    }
+    setPipeline((prev) => {
+      const currentStep = ensureStepState(prev.steps, "narrationAudio");
+      if (currentStep.status === "success") {
+        return prev;
+      }
+      return {
+        ...prev,
+        steps: {
+          ...prev.steps,
+          narrationAudio: {
+            ...currentStep,
+            status: "success" as const,
+            errorMessage: undefined,
+          },
+        },
+      };
+    });
+  }, [scriptAudioUrl]);
+
+  useEffect(() => {
     return () => {
       if (scriptAudioUrl && scriptAudioUrl.startsWith("blob:")) {
         URL.revokeObjectURL(scriptAudioUrl);
@@ -514,6 +552,48 @@ export function useAgentPipeline() {
       return current ? { ...current, url: versionedUrl } : { url: versionedUrl };
     });
   }, [pipeline.thumbnailPath]);
+
+  useEffect(() => {
+    if (isGeneratingThumbnail) {
+      return;
+    }
+
+    const hasInlineThumbnail = Boolean(thumbnailImage?.data) || Boolean(thumbnailImage?.url);
+
+    setPipeline((prev) => {
+      const currentStep = ensureStepState(prev.steps, "thumbnailGenerate");
+      const hasPersistedThumbnail = Boolean(prev.thumbnailPath);
+      const hasThumbnailAsset = hasInlineThumbnail || hasPersistedThumbnail;
+
+      let nextStatus: StepRunState["status"] | null = null;
+      if (hasThumbnailAsset && currentStep.status !== "success") {
+        nextStatus = "success";
+      } else if (!hasThumbnailAsset && currentStep.status === "running") {
+        nextStatus = "idle";
+      }
+
+      if (!nextStatus) {
+        return prev;
+      }
+
+      const nextSteps = {
+        ...prev.steps,
+        thumbnailGenerate: {
+          ...currentStep,
+          status: nextStatus,
+          errorMessage: nextStatus === "success" ? undefined : currentStep.errorMessage,
+        },
+      };
+      const totals = calculateStepTotals(nextSteps);
+
+      return {
+        ...prev,
+        steps: nextSteps,
+        totalTokens: totals.totalTokens,
+        totalCostUsd: totals.totalCostUsd,
+      };
+    });
+  }, [isGeneratingThumbnail, thumbnailImage, pipeline.thumbnailPath]);
 
   const setVariable = useCallback((variableKey: VariableKey, value: string) => {
     setPipeline((prev) => {
@@ -900,129 +980,10 @@ export function useAgentPipeline() {
           }
         };
 
-        const runScriptQaStep = async (videoScriptText: string) => {
-          const trimmedScript = videoScriptText?.trim();
-          if (!trimmedScript) {
-            return;
-          }
-
-          const hasScriptQaStep = STEP_CONFIGS.some((config) => config.id === "scriptQA");
-          if (!hasScriptQaStep) {
-            return;
-          }
-
-          setPipeline((prev) => ({
-            ...prev,
-            steps: {
-              ...prev.steps,
-              scriptQA: {
-                ...prev.steps.scriptQA,
-                status: "running" as const,
-                errorMessage: undefined,
-              },
-            },
-          }));
-
-          try {
-            const qaResponse = await fetch("/api/agent/run-step", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                stepId: "scriptQA",
-                model: currentModel,
-                topic: currentTopic,
-                variables: {
-                  VideoScript: trimmedScript,
-                },
-                promptTemplateOverride: promptOverrides.scriptQA,
-              }),
-            });
-
-            const qaData = await qaResponse.json();
-            if (!qaResponse.ok || qaData?.error) {
-              const message =
-                (typeof qaData?.error === "string" && qaData.error) ||
-                `Failed to run script QA step (status ${qaResponse.status}).`;
-              throw new Error(message);
-            }
-
-            const qaProducedVariables: Record<string, string> =
-              qaData.producedVariables ?? {};
-            const finalScript =
-              qaProducedVariables.VideoScript ??
-              qaData.responseText ??
-              trimmedScript;
-
-            setPipeline((prev) => {
-              const updatedSteps = {
-                ...prev.steps,
-                scriptQA: {
-                  ...prev.steps.scriptQA,
-                  resolvedPrompt: qaData.resolvedPrompt ?? "",
-                  responseText: qaData.responseText ?? "",
-                  status: "success" as const,
-                  metrics: qaData.metrics,
-                  errorMessage: undefined,
-                },
-              };
-
-              const nextPipeline: PipelineState = {
-                ...prev,
-                steps: updatedSteps,
-              };
-
-              for (const [key, value] of Object.entries(qaProducedVariables)) {
-                const field = PRODUCED_VARIABLE_TO_PIPELINE_FIELD[key as VariableKey];
-                if (field) {
-                  nextPipeline[field] = value;
-                }
-              }
-
-              nextPipeline.totalTokens = Object.values(updatedSteps).reduce(
-                (sum, step) => sum + (step.metrics?.totalTokens ?? 0),
-                0,
-              );
-              nextPipeline.totalCostUsd = Object.values(updatedSteps).reduce(
-                (sum, step) => sum + (step.metrics?.costUsd ?? 0),
-                0,
-              );
-
-              return nextPipeline;
-            });
-
-            if (finalScript.trim().length > 0) {
-              await runNarrationPipeline(finalScript);
-            }
-          } catch (qaError) {
-            const message =
-              qaError instanceof Error ? qaError.message : "Failed to run script QA step.";
-            setPipeline((prev) => ({
-              ...prev,
-              steps: {
-                ...prev.steps,
-                scriptQA: {
-                  ...prev.steps.scriptQA,
-                  status: "error" as const,
-                  errorMessage: message,
-                },
-              },
-            }));
-
-            if (trimmedScript.length > 0) {
-              await runNarrationPipeline(trimmedScript);
-            }
-          }
-        };
-
         if (producedVariables.VideoScript && stepId === "scriptQA") {
           await runNarrationPipeline(producedVariables.VideoScript);
         }
 
-        if (producedVariables.VideoScript && stepId === "script") {
-          await runScriptQaStep(producedVariables.VideoScript);
-        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to run step.";
         setPipeline((prev) => ({
@@ -1073,6 +1034,9 @@ export function useAgentPipeline() {
         }));
         return;
       }
+
+      const characterCount = finalScript.length;
+      const estimatedCostUsd = (characterCount / 1000) * TTS_COST_PER_THOUSAND_CHARS_USD;
 
       setIsGeneratingScriptAudio(true);
       setScriptAudioError(null);
@@ -1139,18 +1103,33 @@ export function useAgentPipeline() {
         const blob = await response.blob();
         const objectUrl = URL.createObjectURL(blob);
         setScriptAudioUrl(objectUrl);
-        setScriptAudioGenerationTimeMs(performance.now() - startTime);
-        setPipeline((prev) => ({
-          ...prev,
-          steps: {
+        const generationDurationMs = performance.now() - startTime;
+        setScriptAudioGenerationTimeMs(generationDurationMs);
+        setPipeline((prev) => {
+          const currentStep = ensureStepState(prev.steps, "narrationAudio");
+          const nextSteps = {
             ...prev.steps,
             narrationAudio: {
-              ...prev.steps.narrationAudio,
+              ...currentStep,
               status: "success" as const,
               errorMessage: undefined,
+              metrics: {
+                inputTokens: 0,
+                outputTokens: 0,
+                totalTokens: 0,
+                costUsd: estimatedCostUsd,
+                durationMs: generationDurationMs,
+              },
             },
-          },
-        }));
+          };
+          const totals = calculateStepTotals(nextSteps);
+          return {
+            ...prev,
+            steps: nextSteps,
+            totalTokens: totals.totalTokens,
+            totalCostUsd: totals.totalCostUsd,
+          };
+        });
         queueAutoSave();
       } catch (error) {
         const message =
@@ -1721,6 +1700,7 @@ export function useAgentPipeline() {
       hasAnyOutputs,
       hasScript,
       hasRuntimeMetrics,
+      scriptDraftStats,
       videoScriptStats,
     },
     actions: {

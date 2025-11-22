@@ -315,10 +315,6 @@ export function AgentShell({
                   sessionTotals={{
                     totalTokens: pipeline.totalTokens,
                     totalCostUsd: pipeline.totalCostUsd,
-                    llmRuntimeSeconds:
-                      derived.hasRuntimeMetrics && derived.totalGenerationDurationMs > 0
-                        ? derived.totalGenerationDurationMs / 1000
-                        : undefined,
                   }}
                 />
               </section>
@@ -379,10 +375,6 @@ export function AgentShell({
                   sessionTotals={{
                     totalTokens: pipeline.totalTokens,
                     totalCostUsd: pipeline.totalCostUsd,
-                    llmRuntimeSeconds:
-                      derived.hasRuntimeMetrics && derived.totalGenerationDurationMs > 0
-                        ? derived.totalGenerationDurationMs / 1000
-                        : undefined,
                   }}
                   />
                 </div>

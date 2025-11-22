@@ -496,14 +496,14 @@ export function StageNavigator({
                 </span>
                 <span className="text-sm text-zinc-400">${sessionTotals.totalCostUsd.toFixed(3)}</span>
               </div>
-              {typeof sessionTotals.llmRuntimeSeconds === "number" && (
-                <div className="mt-2 flex items-center justify-between text-xs text-zinc-400">
-                  <span className="font-semibold uppercase tracking-[0.3em]">LLM runtime</span>
-                  <span className="text-sm font-semibold text-white">
-                    {sessionTotals.llmRuntimeSeconds.toFixed(1)}s
-                  </span>
-                </div>
-              )}
+              <div className="mt-2 flex items-center justify-between text-xs text-zinc-400">
+                <span className="font-semibold uppercase tracking-[0.3em]">LLM runtime</span>
+                <span className="text-sm font-semibold text-white">
+                  {typeof sessionTotals.llmRuntimeSeconds === "number"
+                    ? `${sessionTotals.llmRuntimeSeconds.toFixed(1)}s`
+                    : "--"}
+                </span>
+              </div>
               <p className="mt-2 text-xs text-zinc-500">Numbers refresh after each step finishes.</p>
             </div>
           )}
