@@ -17,6 +17,7 @@ import type {
   NarrationModelId,
   PipelineState,
   StepId,
+  StepRunMetrics,
   StepRunState,
   VariableKey,
 } from "@/types/agent";
@@ -62,6 +63,8 @@ function createInitialPipeline(): PipelineState {
     steps: createInitialSteps(),
     totalTokens: 0,
     totalCostUsd: 0,
+    sessionTotalTokens: 0,
+    sessionTotalCostUsd: 0,
   };
 }
 
@@ -88,6 +91,48 @@ function ensureStepState(
       responseText: "",
     }
   );
+}
+
+function ensureSessionTotals(pipeline: PipelineState): PipelineState {
+  const fallbackTokens = typeof pipeline.totalTokens === "number" ? pipeline.totalTokens : 0;
+  const fallbackCost = typeof pipeline.totalCostUsd === "number" ? pipeline.totalCostUsd : 0;
+  return {
+    ...pipeline,
+    sessionTotalTokens:
+      typeof pipeline.sessionTotalTokens === "number"
+        ? pipeline.sessionTotalTokens
+        : fallbackTokens,
+    sessionTotalCostUsd:
+      typeof pipeline.sessionTotalCostUsd === "number"
+        ? pipeline.sessionTotalCostUsd
+        : fallbackCost,
+  };
+}
+
+function getAccumulatedSessionTotals(
+  pipeline: PipelineState,
+  metrics?: StepRunMetrics,
+): { sessionTotalTokens: number; sessionTotalCostUsd: number } {
+  const currentTokens =
+    typeof pipeline.sessionTotalTokens === "number"
+      ? pipeline.sessionTotalTokens
+      : typeof pipeline.totalTokens === "number"
+        ? pipeline.totalTokens
+        : 0;
+  const currentCost =
+    typeof pipeline.sessionTotalCostUsd === "number"
+      ? pipeline.sessionTotalCostUsd
+      : typeof pipeline.totalCostUsd === "number"
+        ? pipeline.totalCostUsd
+        : 0;
+
+  const deltaTokens = metrics?.totalTokens ?? 0;
+  const deltaCost = metrics?.costUsd ?? 0;
+
+  return {
+    sessionTotalTokens: currentTokens + deltaTokens,
+    sessionTotalCostUsd: currentCost + deltaCost,
+  };
 }
 
 const PIPELINE_STORAGE_KEY = "pipeline:v1";
@@ -124,7 +169,7 @@ function loadInitialPipeline(): PipelineState {
           const normalizedNarrationModel = normalizeNarrationModelId(
             parsed.narrationModelId,
           );
-          return {
+          return ensureSessionTotals({
             ...base,
             ...parsed,
             model: resolvedModel,
@@ -133,7 +178,7 @@ function loadInitialPipeline(): PipelineState {
               ...base.steps,
               ...parsed.steps,
             },
-          };
+          });
         }
       }
     } catch {
@@ -310,13 +355,15 @@ export function useAgentPipeline() {
         throw new Error("Server returned invalid project data during auto-save.");
       }
 
-      setPipeline((prev) => ({
-        ...prev,
-        ...data,
-        narrationModelId: normalizeNarrationModelId(
-          data.narrationModelId ?? prev.narrationModelId,
-        ),
-      }));
+      setPipeline((prev) =>
+        ensureSessionTotals({
+          ...prev,
+          ...data,
+          narrationModelId: normalizeNarrationModelId(
+            data.narrationModelId ?? prev.narrationModelId,
+          ),
+        }),
+      );
 
       const nextSelectedId =
         typeof data.id === "string" ? data.id : latest.id ?? null;
@@ -764,6 +811,9 @@ export function useAgentPipeline() {
             (sum, step) => sum + (step.metrics?.costUsd ?? 0),
             0,
           );
+          const sessionTotals = getAccumulatedSessionTotals(prev, data.metrics);
+          nextPipeline.sessionTotalTokens = sessionTotals.sessionTotalTokens;
+          nextPipeline.sessionTotalCostUsd = sessionTotals.sessionTotalCostUsd;
 
           return nextPipeline;
         });
@@ -852,6 +902,12 @@ export function useAgentPipeline() {
                   (sum, step) => sum + (step.metrics?.costUsd ?? 0),
                   0,
                 );
+              const sessionTotals = getAccumulatedSessionTotals(
+                prev,
+                narrationData.metrics,
+              );
+              nextPipeline.sessionTotalTokens = sessionTotals.sessionTotalTokens;
+              nextPipeline.sessionTotalCostUsd = sessionTotals.sessionTotalCostUsd;
 
                 return nextPipeline;
               });
@@ -930,6 +986,12 @@ export function useAgentPipeline() {
                         (sum, step) => sum + (step.metrics?.costUsd ?? 0),
                         0,
                       );
+                      const sessionTotals = getAccumulatedSessionTotals(
+                        prev,
+                        audioTagData.metrics,
+                      );
+                      nextPipeline.sessionTotalTokens = sessionTotals.sessionTotalTokens;
+                      nextPipeline.sessionTotalCostUsd = sessionTotals.sessionTotalCostUsd;
 
                       return nextPipeline;
                     });
@@ -1106,6 +1168,13 @@ export function useAgentPipeline() {
         const generationDurationMs = performance.now() - startTime;
         setScriptAudioGenerationTimeMs(generationDurationMs);
         setPipeline((prev) => {
+          const narrationAudioMetrics: StepRunMetrics = {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            costUsd: estimatedCostUsd,
+            durationMs: generationDurationMs,
+          };
           const currentStep = ensureStepState(prev.steps, "narrationAudio");
           const nextSteps = {
             ...prev.steps,
@@ -1113,21 +1182,18 @@ export function useAgentPipeline() {
               ...currentStep,
               status: "success" as const,
               errorMessage: undefined,
-              metrics: {
-                inputTokens: 0,
-                outputTokens: 0,
-                totalTokens: 0,
-                costUsd: estimatedCostUsd,
-                durationMs: generationDurationMs,
-              },
+              metrics: narrationAudioMetrics,
             },
           };
           const totals = calculateStepTotals(nextSteps);
+          const sessionTotals = getAccumulatedSessionTotals(prev, narrationAudioMetrics);
           return {
             ...prev,
             steps: nextSteps,
             totalTokens: totals.totalTokens,
             totalCostUsd: totals.totalCostUsd,
+            sessionTotalTokens: sessionTotals.sessionTotalTokens,
+            sessionTotalCostUsd: sessionTotals.sessionTotalCostUsd,
           };
         });
         queueAutoSave();
@@ -1196,15 +1262,17 @@ export function useAgentPipeline() {
 
       const data = await response.json();
       if (isPipelineState(data)) {
-        setPipeline((prev) => ({
-          ...prev,
-          ...data,
-          id: data.id ?? prev.id,
-          projectSlug: data.projectSlug ?? prev.projectSlug,
-          narrationModelId: normalizeNarrationModelId(
-            data.narrationModelId ?? prev.narrationModelId,
-          ),
-        }));
+        setPipeline((prev) =>
+          ensureSessionTotals({
+            ...prev,
+            ...data,
+            id: data.id ?? prev.id,
+            projectSlug: data.projectSlug ?? prev.projectSlug,
+            narrationModelId: normalizeNarrationModelId(
+              data.narrationModelId ?? prev.narrationModelId,
+            ),
+          }),
+        );
 
         const nextNarrationScript =
           typeof data.narrationScript === "string" && data.narrationScript.trim().length > 0
@@ -1297,13 +1365,15 @@ export function useAgentPipeline() {
       }
 
       if (isPipelineState(data)) {
-        setPipeline((prev) => ({
-          ...prev,
-          ...data,
-          narrationModelId: normalizeNarrationModelId(
-            data.narrationModelId ?? prev.narrationModelId,
-          ),
-        }));
+        setPipeline((prev) =>
+          ensureSessionTotals({
+            ...prev,
+            ...data,
+            narrationModelId: normalizeNarrationModelId(
+              data.narrationModelId ?? prev.narrationModelId,
+            ),
+          }),
+        );
         const nextSelectedId =
           typeof data.id === "string" ? data.id : (pipeline.id ?? null);
         setSelectedProjectId(nextSelectedId);
@@ -1335,13 +1405,15 @@ export function useAgentPipeline() {
         throw new Error("Server returned invalid project data.");
       }
       const loadedPipeline = data as PipelineState;
-      setPipeline((prev) => ({
-        ...prev,
-        ...loadedPipeline,
-        narrationModelId: normalizeNarrationModelId(
-          loadedPipeline.narrationModelId ?? prev.narrationModelId,
-        ),
-      }));
+      setPipeline((prev) =>
+        ensureSessionTotals({
+          ...prev,
+          ...loadedPipeline,
+          narrationModelId: normalizeNarrationModelId(
+            loadedPipeline.narrationModelId ?? prev.narrationModelId,
+          ),
+        }),
+      );
       const audioUrl = getPublicProjectFileUrl(loadedPipeline.audioPath);
       setScriptAudioUrl((prevUrl) => {
         if (prevUrl && prevUrl.startsWith("blob:")) {
@@ -1530,6 +1602,14 @@ export function useAgentPipeline() {
       });
 
       setPipeline((prev) => {
+        const thumbnailStepMetrics: StepRunMetrics = {
+          inputTokens: usageInputTokens ?? 0,
+          outputTokens: usageOutputTokens ?? 0,
+          totalTokens:
+            usageTotalTokens ?? usageInputTokens ?? usageOutputTokens ?? 0,
+          costUsd: reportedCostUsd ?? 0,
+          durationMs,
+        };
         const nextSteps = {
           ...prev.steps,
           thumbnailGenerate: {
@@ -1537,14 +1617,7 @@ export function useAgentPipeline() {
             resolvedPrompt: prompt,
             responseText: versionedUrl ?? data.thumbnailPath ?? "",
             status: "success" as const,
-            metrics: {
-              inputTokens: usageInputTokens ?? 0,
-              outputTokens: usageOutputTokens ?? 0,
-              totalTokens:
-                usageTotalTokens ?? usageInputTokens ?? usageOutputTokens ?? 0,
-              costUsd: reportedCostUsd ?? 0,
-              durationMs,
-            },
+            metrics: thumbnailStepMetrics,
             errorMessage: undefined,
           },
         };
@@ -1555,6 +1628,9 @@ export function useAgentPipeline() {
           totalTokens: totals.totalTokens,
           totalCostUsd: totals.totalCostUsd,
         };
+        const sessionTotals = getAccumulatedSessionTotals(prev, thumbnailStepMetrics);
+        nextPipeline.sessionTotalTokens = sessionTotals.sessionTotalTokens;
+        nextPipeline.sessionTotalCostUsd = sessionTotals.sessionTotalCostUsd;
         if (typeof storagePath === "string" && storagePath.trim().length > 0) {
           nextPipeline.thumbnailPath = storagePath;
         }

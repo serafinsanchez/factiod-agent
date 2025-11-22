@@ -70,6 +70,8 @@ export interface PipelineState {
   model: ModelId;
   totalTokens: number;
   totalCostUsd: number;
+  sessionTotalTokens?: number;
+  sessionTotalCostUsd?: number;
   narrationModelId?: NarrationModelId;
   /**
    * Optional fields used for persistence of projects/history.

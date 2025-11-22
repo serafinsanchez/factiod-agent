@@ -313,8 +313,8 @@ export function AgentShell({
                     canDownloadThumbnail,
                   }}
                   sessionTotals={{
-                    totalTokens: pipeline.totalTokens,
-                    totalCostUsd: pipeline.totalCostUsd,
+                    totalTokens: pipeline.sessionTotalTokens ?? pipeline.totalTokens,
+                    totalCostUsd: pipeline.sessionTotalCostUsd ?? pipeline.totalCostUsd,
                   }}
                 />
               </section>
@@ -373,8 +373,8 @@ export function AgentShell({
                     canDownloadThumbnail,
                     }}
                   sessionTotals={{
-                    totalTokens: pipeline.totalTokens,
-                    totalCostUsd: pipeline.totalCostUsd,
+                    totalTokens: pipeline.sessionTotalTokens ?? pipeline.totalTokens,
+                    totalCostUsd: pipeline.sessionTotalCostUsd ?? pipeline.totalCostUsd,
                   }}
                   />
                 </div>

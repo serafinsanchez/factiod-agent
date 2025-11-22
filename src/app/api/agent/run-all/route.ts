@@ -187,6 +187,8 @@ export async function POST(request: Request) {
       model,
       totalTokens: 0,
       totalCostUsd: 0,
+    sessionTotalTokens: 0,
+    sessionTotalCostUsd: 0,
     };
 
     const variables: Record<string, string> = {
@@ -234,6 +236,8 @@ export async function POST(request: Request) {
 
       pipeline.totalTokens += stepResult.metrics.totalTokens;
       pipeline.totalCostUsd += stepResult.metrics.costUsd;
+      pipeline.sessionTotalTokens = (pipeline.sessionTotalTokens ?? 0) + stepResult.metrics.totalTokens;
+      pipeline.sessionTotalCostUsd = (pipeline.sessionTotalCostUsd ?? 0) + stepResult.metrics.costUsd;
 
       applyProducedVariables(stepResult.producedVariables, variables, pipeline);
     }
