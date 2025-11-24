@@ -163,7 +163,7 @@ export function ProjectSidebar({
             type="button"
             onClick={onSaveProject}
             disabled={isSavingCurrentProject || !canSaveCurrentProject}
-            className="mt-4 flex w-full justify-center rounded-2xl border border-white/20 bg-transparent text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-4 flex w-full justify-center rounded-2xl border border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             variant="outline"
           >
             {isSavingCurrentProject ? "Saving…" : "Save project"}
