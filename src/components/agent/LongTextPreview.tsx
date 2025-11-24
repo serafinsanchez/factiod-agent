@@ -93,7 +93,7 @@ export function LongTextPreview({
               type="button"
               size="sm"
               variant="outline"
-              className="rounded-full border border-white/20 bg-transparent text-xs font-semibold uppercase tracking-[0.3em] text-white hover:border-white/40 hover:bg-white/10"
+              className="rounded-full border border-white/20 bg-transparent text-xs font-semibold uppercase tracking-[0.3em] text-white hover:border-white/40 hover:bg-white/10 hover:text-white"
               disabled={!hasText}
               aria-label={`Open ${modalTitle}`}
             >
@@ -128,7 +128,7 @@ export function LongTextPreview({
               <Button
                 type="button"
                 variant="outline"
-                className="rounded-full border border-white/20 bg-transparent text-sm font-semibold text-white hover:border-white/40 hover:bg-white/10 disabled:opacity-60"
+                className="rounded-full border border-white/20 bg-transparent text-sm font-semibold text-white hover:border-white/40 hover:bg-white/10 hover:text-white disabled:opacity-60"
                 onClick={handleCopy}
                 disabled={!hasText}
               >

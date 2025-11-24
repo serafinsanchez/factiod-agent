@@ -131,7 +131,7 @@ export function OutputPreview({ state, derived, actions }: OutputPreviewProps) {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-8 rounded-full px-4 text-sm text-white hover:bg-white/10"
+                  className="h-8 rounded-full px-4 text-sm text-white hover:bg-white/10 hover:text-white"
                   onClick={actions.downloadThumbnail}
                 >
                   Download image

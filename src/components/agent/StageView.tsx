@@ -448,7 +448,7 @@ function NarrationAudioStep({
           </span>
           <Button
             variant="outline"
-            className="rounded-2xl border border-white/30 bg-transparent text-white hover:bg-white/10 disabled:opacity-60"
+            className="rounded-2xl border border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white disabled:opacity-60"
             disabled={buttonDisabled}
             onClick={() => actions.runNarrationAudioStep()}
             title={
@@ -600,7 +600,7 @@ function ThumbnailGenerationStep({
           </span>
           <Button
             variant="outline"
-            className="rounded-2xl border border-white/30 bg-transparent text-white hover:bg-white/10 disabled:opacity-60"
+            className="rounded-2xl border border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white disabled:opacity-60"
             disabled={buttonDisabled}
             onClick={actions.generateThumbnail}
             title={
@@ -645,7 +645,7 @@ function ThumbnailGenerationStep({
             )}
             <Button
               variant="ghost"
-              className="h-8 rounded-full px-4 text-sm text-white hover:bg-white/10"
+              className="h-8 rounded-full px-4 text-sm text-white hover:bg-white/10 hover:text-white"
               onClick={actions.downloadThumbnail}
             >
               Download image
