@@ -452,7 +452,7 @@ export function StageNavigator({
               variant="outline"
               onClick={exportActions.onExportFiles}
               disabled={!exportActions.canExportFiles}
-              className="h-11 w-full rounded-2xl border-zinc-800 bg-transparent text-sm text-zinc-200 hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-11 w-full rounded-2xl border-zinc-800 bg-transparent text-sm text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               Export text files
             </Button>
@@ -460,7 +460,7 @@ export function StageNavigator({
               variant="outline"
               onClick={exportActions.onExportScript}
               disabled={!exportActions.canExportScript}
-              className="h-11 w-full rounded-2xl border-zinc-800 bg-transparent text-sm text-zinc-200 hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-11 w-full rounded-2xl border-zinc-800 bg-transparent text-sm text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               Export script (.md)
             </Button>
@@ -469,7 +469,7 @@ export function StageNavigator({
                 variant="outline"
                 onClick={exportActions.onDownloadVoiceover}
                 disabled={!exportActions.canDownloadVoiceover}
-                className="h-11 w-full rounded-2xl border-zinc-800 bg-transparent text-sm text-zinc-200 hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-11 w-full rounded-2xl border-zinc-800 bg-transparent text-sm text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Download voiceover (.mp3)
               </Button>
@@ -479,7 +479,7 @@ export function StageNavigator({
                 variant="outline"
                 onClick={exportActions.onDownloadThumbnail}
                 disabled={!exportActions.canDownloadThumbnail}
-                className="h-11 w-full rounded-2xl border-zinc-800 bg-transparent text-sm text-zinc-200 hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-11 w-full rounded-2xl border-zinc-800 bg-transparent text-sm text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Download thumbnail (.png)
               </Button>
