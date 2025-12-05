@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { slugifyTopic } from "@/lib/slug";
-import type { StepConfig, StepId, VariableKey, SceneAsset } from "@/types/agent";
+import type { StepConfig, StepId, VariableKey, SceneAsset, VideoFrameMode } from "@/types/agent";
 import { ChevronDown, Download, PenLine, RefreshCw, X } from "lucide-react";
 
 import type { UseAgentPipelineReturn } from "@/hooks/use-agent-pipeline";
@@ -263,6 +263,30 @@ export function StageView({
               }
 
               // Video generation step handlers
+              if (config.id === "productionScript") {
+                return (
+                  <div
+                    key={config.id}
+                    id={`step-${config.id}`}
+                    data-step-id={config.id}
+                    ref={(node) => {
+                      stepRefs.current[config.id] = node;
+                    }}
+                    className="space-y-4 scroll-mt-32"
+                  >
+                    <ProductionScriptStep
+                      stepConfig={config}
+                      state={state}
+                      derived={derived}
+                      actions={actions}
+                      collapsedSteps={collapsedSteps}
+                      onStepCollapseChangeAction={onStepCollapseChangeAction}
+                      onEditVariable={onEditVariable}
+                    />
+                  </div>
+                );
+              }
+
               if (config.id === "characterReferenceImage") {
                 return (
                   <div
@@ -881,6 +905,100 @@ function ThumbnailMetricTile({
 // ============================================
 // Video Generation Steps
 // ============================================
+
+function ProductionScriptStep({
+  stepConfig,
+  state,
+  derived,
+  actions,
+  collapsedSteps,
+  onStepCollapseChangeAction,
+  onEditVariable,
+}: {
+  stepConfig: StepConfig;
+  state: UseAgentPipelineReturn["state"];
+  derived: UseAgentPipelineReturn["derived"];
+  actions: UseAgentPipelineReturn["actions"];
+  collapsedSteps: Record<StepId, boolean>;
+  onStepCollapseChangeAction: (stepId: StepId, collapsed: boolean) => void;
+  onEditVariable?: (variable: VariableKey) => void;
+}) {
+  const currentFrameMode: VideoFrameMode = state.pipeline.videoFrameMode || 'flf2v';
+  const isStepCollapsed = collapsedSteps[stepConfig.id] ?? true;
+  
+  const handleFrameModeChange = (mode: VideoFrameMode) => {
+    actions.setPipeline((prev) => ({
+      ...prev,
+      videoFrameMode: mode,
+    }));
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Frame Mode Toggle */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className="mb-3">
+          <Label className="text-sm font-medium text-white">Video Frame Mode</Label>
+          <p className="mt-1 text-xs text-zinc-400">
+            Choose how images are generated for video clips. This affects both the prompts and the video generation process.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-700 bg-zinc-800/50 p-3 transition-colors hover:bg-zinc-800">
+            <input
+              type="radio"
+              name="frameMode"
+              value="flf2v"
+              checked={currentFrameMode === 'flf2v'}
+              onChange={() => handleFrameModeChange('flf2v')}
+              className="mt-0.5 h-4 w-4 border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
+            />
+            <div>
+              <span className="text-sm font-medium text-white">FLF2V (First + Last Frame)</span>
+              <p className="mt-0.5 text-xs text-zinc-400">
+                Generates both first and last frame images. WAN 2.2 interpolates between them for controlled, smooth motion.
+              </p>
+            </div>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-700 bg-zinc-800/50 p-3 transition-colors hover:bg-zinc-800">
+            <input
+              type="radio"
+              name="frameMode"
+              value="first-frame-only"
+              checked={currentFrameMode === 'first-frame-only'}
+              onChange={() => handleFrameModeChange('first-frame-only')}
+              className="mt-0.5 h-4 w-4 border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500/50"
+            />
+            <div>
+              <span className="text-sm font-medium text-white">First Frame Only</span>
+              <p className="mt-0.5 text-xs text-zinc-400">
+                Generates only the starting image. WAN 2.2 generates motion freely from this single frame.
+              </p>
+            </div>
+          </label>
+        </div>
+        <div className="mt-3 flex items-center gap-2 text-xs text-zinc-500">
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
+          Current: {currentFrameMode === 'flf2v' ? 'FLF2V (First + Last Frame)' : 'First Frame Only'}
+        </div>
+      </div>
+
+      {/* Standard Step Editor */}
+      <StepEditor
+        stepConfig={stepConfig}
+        stepState={state.pipeline.steps[stepConfig.id]}
+        sharedVars={derived.sharedVars}
+        pipeline={state.pipeline}
+        templateValue={state.promptOverrides[stepConfig.id] ?? stepConfig.promptTemplate}
+        onRunStep={actions.runStep}
+        onPromptChange={actions.setPromptOverride}
+        onEditVariable={onEditVariable}
+        isCollapsed={isStepCollapsed}
+        onToggleCollapse={() => onStepCollapseChangeAction(stepConfig.id, !isStepCollapsed)}
+      />
+    </div>
+  );
+}
 
 function CharacterReferenceStep({
   stepConfig,
@@ -1711,15 +1829,28 @@ function VideoAssemblyStep({
           <span className={`text-[0.6rem] font-semibold uppercase tracking-[0.3em] ${statusToneClasses}`}>
             {statusLabel}
           </span>
-          <Button
-            variant="outline"
-            className="rounded-2xl border border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white disabled:opacity-60"
-            disabled={buttonDisabled}
-            onClick={() => actions.assembleVideo(filename || undefined)}
-            title={canAssemble ? undefined : "Generate video clips and narration audio first."}
-          >
-            {isRunning ? "Assembling…" : "Assemble video"}
-          </Button>
+          <div className="flex gap-2">
+            {isRunning && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-2xl border border-rose-500/50 bg-transparent text-rose-400 hover:bg-rose-500/10 hover:text-rose-300"
+                onClick={() => actions.resetAssemblyState?.()}
+                title="Reset stuck assembly state"
+              >
+                Reset
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              className="rounded-2xl border border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white disabled:opacity-60"
+              disabled={buttonDisabled}
+              onClick={() => actions.assembleVideo(filename || undefined)}
+              title={canAssemble ? undefined : "Generate video clips and narration audio first."}
+            >
+              {isRunning ? "Assembling…" : "Assemble video"}
+            </Button>
+          </div>
         </div>
       </div>
 

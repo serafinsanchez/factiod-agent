@@ -1,4 +1,15 @@
-import type { VisualStyleId } from '../../types/agent';
+import type { VisualStyleId, VideoFrameMode } from '../../types/agent';
+
+// Shared example for single-frame video mode to avoid conflicting guidance.
+const FIRST_FRAME_ONLY_VIDEO_OUTPUT_EXAMPLE = `\`\`\`json
+[
+  {
+    "sceneNumber": 1,
+    "videoPrompt": "Dust particles drift slowly across the lunar surface. Shadows shift subtly as light angle changes. Distant stars twinkle gently. Static camera.",
+    "suggestedDurationSec": 7
+  }
+]
+\`\`\``;
 
 /**
  * Visual style preset definition for video generation.
@@ -562,10 +573,37 @@ export function getProductionScriptStyleSections(styleId: VisualStyleId | undefi
 
 /**
  * Get a consolidated style guidance block for the Scene Image Prompts step.
- * This combines all necessary FLF2V guidance with style-specific hints in one block.
+ * This combines all necessary guidance with style-specific hints in one block.
+ * Content varies based on videoFrameMode.
  */
-export function getConsolidatedImagePromptsGuidance(styleId: VisualStyleId | undefined): string {
+export function getConsolidatedImagePromptsGuidance(
+  styleId: VisualStyleId | undefined,
+  frameMode: VideoFrameMode = 'flf2v'
+): string {
   const preset = getVisualStylePreset(styleId);
+  
+  if (frameMode === 'first-frame-only') {
+    // First-frame-only mode: simpler guidance, no micro-movements
+    return `## STYLE: ${preset.label}
+
+${preset.sceneImageHints}
+
+## SINGLE FRAME MODE
+Generate ONE high-quality image prompt per scene that captures the key visual moment.
+The video model will generate motion from this single starting frame.
+
+## OUTPUT FORMAT
+\`\`\`json
+[
+  {
+    "sceneNumber": 1,
+    "firstFramePrompt": "Complete scene description (25-40 words) - subject, pose, environment, lighting, camera angle. This single image is the starting point for video generation."
+  }
+]
+\`\`\``;
+  }
+  
+  // FLF2V mode: full guidance with micro-movements
   return `## STYLE: ${preset.label}
 
 ${preset.sceneImageHints}
@@ -583,11 +621,63 @@ ${preset.sceneImagePromptsExample}`;
 }
 
 /**
+ * Get mode-specific task description for Scene Image Prompts.
+ */
+export function getVideoFrameModeImageTask(frameMode: VideoFrameMode = 'flf2v'): string {
+  if (frameMode === 'first-frame-only') {
+    return `For each scene, output:
+- **sceneNumber**: Match the scene number from input
+- **firstFramePrompt**: Complete scene description (25-40 words) - subject, pose, environment, lighting, camera`;
+  }
+  
+  return `For each scene, output:
+- **sceneNumber**: Match the scene number from input
+- **firstFramePrompt**: Complete scene description (25-40 words) - subject, pose, environment, lighting, camera
+- **lastFramePrompt**: IDENTICAL to firstFramePrompt except for ONE micro-movement change explicitly stated
+- **microMovement**: Label for what changes (from the table above)`;
+}
+
+/**
+ * Get mode-specific rules for Scene Image Prompts.
+ */
+export function getVideoFrameModeImageRules(frameMode: VideoFrameMode = 'flf2v'): string {
+  if (frameMode === 'first-frame-only') {
+    return `4. **Single frame focus**: Create one compelling starting image that sets up the scene for motion generation`;
+  }
+  
+  return `4. **90% identical prompts**: Camera, lighting, environment, pose must be identical - only the micro-movement differs
+5. **Explicit change**: State what changes in lastFramePrompt (e.g., "eyes now glancing left" not just "looks curious")`;
+}
+
+/**
  * Get a consolidated style guidance block for the Scene Video Prompts step.
  * This focuses on motion description with minimal redundancy.
+ * Content varies based on videoFrameMode.
  */
-export function getConsolidatedVideoPromptsGuidance(styleId: VisualStyleId | undefined): string {
+export function getConsolidatedVideoPromptsGuidance(
+  styleId: VisualStyleId | undefined,
+  frameMode: VideoFrameMode = 'flf2v'
+): string {
   const preset = getVisualStylePreset(styleId);
+  
+  if (frameMode === 'first-frame-only') {
+    // First-frame-only mode: describe motion the model should generate
+    return `## STYLE: ${preset.label}
+
+${preset.videoMotionHints}
+
+## SINGLE FRAME MODE - MOTION GENERATION
+The video model will generate motion from a single starting image. Describe the motion you want to see:
+- Focus on natural, smooth movements that work well with the starting pose
+- Describe subtle environmental effects (wind, lighting changes, particles)
+- Keep motion gentle - the model works best with "breathing photograph" style animations
+- End with camera instruction (usually "Static camera." or "Slow zoom in.")
+
+## OUTPUT FORMAT (NO microMovementAnimated)
+${FIRST_FRAME_ONLY_VIDEO_OUTPUT_EXAMPLE}`;
+  }
+  
+  // FLF2V mode: full guidance with micro-movement copying
   return `## STYLE: ${preset.label}
 
 ${preset.videoMotionHints}
@@ -600,5 +690,96 @@ ${preset.sceneVideoBreathingExample}
 
 ## OUTPUT FORMAT
 ${preset.sceneVideoPromptsExample}`;
+}
+
+/**
+ * Get mode-specific task description for Scene Video Prompts.
+ */
+export function getVideoFrameModeVideoTask(frameMode: VideoFrameMode = 'flf2v'): string {
+  if (frameMode === 'first-frame-only') {
+    return `For each scene in the input, create a video prompt that describes the motion to generate from the starting image.
+
+**Output JSON array with these fields:**
+- sceneNumber: Copy from input
+- videoPrompt: Motion description under 40 words
+- suggestedDurationSec: 5-10 (max 10)`;
+  }
+  
+  return `For each scene in the input, create a video prompt that animates the micro-movement between the first and last frame.
+
+**Output JSON array with these fields:**
+- sceneNumber: Copy from input
+- videoPrompt: Motion description under 40 words
+- suggestedDurationSec: 5-10 (max 10)
+- microMovementAnimated: **COPY the "microMovement" field from the input scene EXACTLY AS-IS**`;
+}
+
+/**
+ * Get mode-specific rules for Scene Video Prompts.
+ */
+export function getVideoFrameModeVideoRules(frameMode: VideoFrameMode = 'flf2v'): string {
+  if (frameMode === 'first-frame-only') {
+    return `## VIDEO PROMPT CONTENT
+
+Describe natural, gentle motion that works well with the starting image:
+- Environmental effects: shadows shifting, light flickering, particles drifting
+- Subtle subject motion: gentle swaying, breathing, slight movements
+- Atmospheric details: wind effects, steam, dust motes
+
+Add 1-2 ambient details. End with camera instruction (usually "Static camera.").
+
+## OUTPUT EXAMPLE
+
+Input: \`{"sceneNumber": 1, "firstFramePrompt": "Close-up of moon surface with craters..."}\`
+
+Output:
+${FIRST_FRAME_ONLY_VIDEO_OUTPUT_EXAMPLE}`;
+  }
+  
+  return `## MICROMOVEMENT FIELD COPYING RULE
+
+The "microMovementAnimated" output field must contain the EXACT SAME STRING as the "microMovement" input field for that scene.
+
+**This is a LITERAL COPY operation, not interpretation:**
+
+| Input microMovement | Output microMovementAnimated |
+|---------------------|------------------------------|
+| "shadow_shift" | "shadow_shift" ← COPY THIS EXACT STRING |
+| "steam_drift" | "steam_drift" ← COPY THIS EXACT STRING |
+| "particle_drift" | "particle_drift" ← COPY THIS EXACT STRING |
+
+**DO NOT:**
+- Invent new labels (NO "rust_spread", "bubble_rise", "liquid_swirl")
+- Describe what you see (NO "bubbles_rising_through_liquid")
+- Combine or modify (NO "shadow_and_light_shift")
+
+**DO:**
+- Copy the microMovement string character-for-character
+
+## VIDEO PROMPT CONTENT
+
+The videoPrompt should describe the motion implied by the microMovement label:
+- shadow_shift → describe shadows moving
+- steam_drift → describe steam drifting  
+- particle_drift → describe particles drifting
+- water_ripple → describe water rippling
+
+Add 1-2 ambient details. End with camera instruction (usually "Static camera.").
+
+## OUTPUT EXAMPLE
+
+Input: \`{"sceneNumber": 1, "microMovement": "shadow_shift", ...}\`
+
+Output:
+\`\`\`json
+{
+  "sceneNumber": 1,
+  "videoPrompt": "Shadows shift slowly across the metal surface. Ambient light holds steady. Dust motes drift gently. Static camera.",
+  "suggestedDurationSec": 7,
+  "microMovementAnimated": "shadow_shift"
+}
+\`\`\`
+
+↑ Note: microMovementAnimated = "shadow_shift" because input microMovement = "shadow_shift"`;
 }
 

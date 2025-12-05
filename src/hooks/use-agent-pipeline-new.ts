@@ -20,6 +20,7 @@ import type {
   StepId,
   StepRunMetrics,
   VariableKey,
+  VideoFrameMode,
   VisualStyleId,
 } from "@/types/agent";
 import {
@@ -27,6 +28,10 @@ import {
   getProductionScriptStyleSections,
   getConsolidatedImagePromptsGuidance,
   getConsolidatedVideoPromptsGuidance,
+  getVideoFrameModeImageTask,
+  getVideoFrameModeImageRules,
+  getVideoFrameModeVideoTask,
+  getVideoFrameModeVideoRules,
 } from "@/lib/agent/visual-styles";
 import {
   VARIABLE_KEY_TO_PIPELINE_FIELD,
@@ -660,8 +665,16 @@ export function useAgentPipeline() {
       variables.VisualStyleBreathingExample = styleSections.breathingExample;
       variables.VisualStyleVideoHints = styleSections.videoPromptsHints;
       variables.VisualStyleVideoExample = styleSections.videoPromptsExample;
-      variables.VisualStyleConsolidatedImageGuidance = getConsolidatedImagePromptsGuidance(pipeline.visualStyleId);
-      variables.VisualStyleConsolidatedVideoGuidance = getConsolidatedVideoPromptsGuidance(pipeline.visualStyleId);
+      
+      // Add video frame mode variables
+      const frameMode: VideoFrameMode = pipeline.videoFrameMode || 'flf2v';
+      variables.VideoFrameMode = frameMode === 'flf2v' ? 'FLF2V (First-Last-Frame-to-Video)' : 'First Frame Only';
+      variables.VisualStyleConsolidatedImageGuidance = getConsolidatedImagePromptsGuidance(pipeline.visualStyleId, frameMode);
+      variables.VisualStyleConsolidatedVideoGuidance = getConsolidatedVideoPromptsGuidance(pipeline.visualStyleId, frameMode);
+      variables.VideoFrameModeImageTask = getVideoFrameModeImageTask(frameMode);
+      variables.VideoFrameModeImageRules = getVideoFrameModeImageRules(frameMode);
+      variables.VideoFrameModeVideoTask = getVideoFrameModeVideoTask(frameMode);
+      variables.VideoFrameModeVideoRules = getVideoFrameModeVideoRules(frameMode);
 
       const promptTemplateOverride = promptOverrides[stepId];
 
@@ -1148,6 +1161,7 @@ export function useAgentPipeline() {
       videoScriptStats,
     },
     actions: {
+      setPipeline,
       setVariable,
       setTopic,
       setModel,
@@ -1176,6 +1190,7 @@ export function useAgentPipeline() {
       downloadSceneImage: sceneImages.downloadSceneImage,
       generateSceneVideos: sceneVideos.generateSceneVideos,
       assembleVideo: videoAssembly.assembleVideo,
+      resetAssemblyState: videoAssembly.resetAssemblyState,
       resetStepStatus,
     },
   };

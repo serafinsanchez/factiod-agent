@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { PipelineState, SceneAsset } from "@/types/agent";
+import type { PipelineState, SceneAsset, VideoFrameMode } from "@/types/agent";
 import { getOrCreateProjectSlug, getPublicProjectFileUrl } from "@/lib/projects";
 import { slugifyTopic } from "@/lib/slug";
 import { type ProgressState, ensureStepState } from "./pipeline-types";
@@ -51,15 +51,39 @@ export function useSceneImages({
       return;
     }
 
-    // Count total images to generate (first frame + last frame for FLF2V scenes)
-    const scenesWithLastFrame = scenesToGenerate.filter((s) => s.lastFrameImagePrompt);
+    // Check video frame mode - in 'first-frame-only' mode, we skip last frame generation
+    const frameMode: VideoFrameMode = pipeline.videoFrameMode || 'flf2v';
+    const isFirstFrameOnly = frameMode === 'first-frame-only';
+
+    // Count total images to generate (first frame + last frame for FLF2V scenes only if in FLF2V mode)
+    const scenesWithLastFrame = isFirstFrameOnly 
+      ? [] 
+      : scenesToGenerate.filter((s) => s.lastFrameImagePrompt);
     const totalImages = scenesToGenerate.length + scenesWithLastFrame.length;
 
     // DEBUG: Log scene data
     console.log("🎬 Scene Image Generation Debug:");
+    console.log("  Video Frame Mode:", frameMode);
     console.log("  Total scenes to generate:", scenesToGenerate.length);
-    console.log("  Scenes with lastFramePrompt:", scenesWithLastFrame.length);
+    console.log("  Scenes with lastFramePrompt:", isFirstFrameOnly ? "N/A (first-frame-only mode)" : scenesWithLastFrame.length);
     console.log("  Total images to generate:", totalImages);
+
+    // Reset targeted scenes so new renders replace any prior images (including history)
+    const scenesToGenerateSet = new Set(scenesToGenerate.map((s) => s.sceneNumber));
+    setPipeline((prev) => {
+      if (!prev.sceneAssets) return prev;
+      const nextAssets = prev.sceneAssets.map((asset) => {
+        if (!scenesToGenerateSet.has(asset.sceneNumber)) return asset;
+        return {
+          ...asset,
+          imageUrl: undefined,
+          lastFrameImageUrl: undefined,
+          status: "pending" as const,
+          errorMessage: undefined,
+        };
+      });
+      return { ...prev, sceneAssets: nextAssets };
+    });
 
     setIsGeneratingSceneImages(true);
     setSceneImagesError(null);
@@ -83,7 +107,8 @@ export function useSceneImages({
     try {
       for (let i = 0; i < scenesToGenerate.length; i++) {
         const scene = scenesToGenerate[i];
-        const hasLastFrame = Boolean(scene.lastFrameImagePrompt);
+        // In first-frame-only mode, always skip last frame even if prompt exists
+        const hasLastFrame = !isFirstFrameOnly && Boolean(scene.lastFrameImagePrompt);
         
         setSceneImagesProgress({ completed: completedImages, total: totalImages });
 
@@ -289,6 +314,9 @@ export function useSceneImages({
           ...nextAssets[assetIndex],
           status: "generating",
           errorMessage: undefined,
+          imageUrl: frameKind === "first" ? undefined : nextAssets[assetIndex].imageUrl,
+          lastFrameImageUrl:
+            frameKind === "last" ? undefined : nextAssets[assetIndex].lastFrameImageUrl,
         };
         const nextPipeline = {
           ...prev,

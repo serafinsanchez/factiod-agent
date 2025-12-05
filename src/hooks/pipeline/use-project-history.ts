@@ -11,6 +11,21 @@ import {
   type ThumbnailImage,
 } from "./pipeline-types";
 
+const resetRunningSteps = (steps: PipelineState["steps"]) => {
+  const result = { ...steps };
+  for (const stepId of Object.keys(result)) {
+    const step = result[stepId as keyof PipelineState["steps"]];
+    if (step?.status === "running") {
+      result[stepId as keyof PipelineState["steps"]] = {
+        ...step,
+        status: "idle",
+        errorMessage: undefined,
+      };
+    }
+  }
+  return result;
+};
+
 type UseProjectHistoryOptions = {
   pipeline: PipelineState;
   setPipeline: React.Dispatch<React.SetStateAction<PipelineState>>;
@@ -177,10 +192,12 @@ export function useProjectHistory({
         throw new Error("Server returned invalid project data.");
       }
       const loadedPipeline = data as PipelineState;
+      const resetSteps = resetRunningSteps(loadedPipeline.steps);
       setPipeline((prev) =>
         ensureSessionTotals({
           ...prev,
           ...loadedPipeline,
+          steps: resetSteps,
           narrationModelId: normalizeNarrationModelId(
             loadedPipeline.narrationModelId ?? prev.narrationModelId,
           ),

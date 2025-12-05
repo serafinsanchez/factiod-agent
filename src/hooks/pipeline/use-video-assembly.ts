@@ -47,6 +47,7 @@ export function useVideoAssembly({
     setPipeline((prev) => ({
       ...prev,
       videoAssemblyStatus: "assembling",
+      finalVideoPath: undefined,
       steps: {
         ...prev.steps,
         videoAssembly: {
@@ -134,23 +135,39 @@ export function useVideoAssembly({
 
       console.log(`🎬 Assembling ${clips.length} clips with audio range: ${audioStartOffset.toFixed(2)}s - ${audioEndOffset.toFixed(2)}s`);
 
-      const res = await fetch("/api/video/assemble", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          manifest: {
-            clips,
-            audioUrl: scriptAudioUrl,
-            outputPath: `public/projects/${projectSlug}/${outputFilename}.mp4`,
-            audioStartOffset,
-            audioEndOffset,
-          },
-          projectSlug,
-        }),
-      });
+      // Add timeout wrapper (15 minutes max for video assembly)
+      const ASSEMBLY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), ASSEMBLY_TIMEOUT_MS);
+
+      let res: Response;
+      try {
+        res = await fetch("/api/video/assemble", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            manifest: {
+              clips,
+              audioUrl: scriptAudioUrl,
+              outputPath: `public/projects/${projectSlug}/${outputFilename}.mp4`,
+              audioStartOffset,
+              audioEndOffset,
+            },
+            projectSlug,
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        if (fetchError instanceof Error && fetchError.name === "AbortError") {
+          throw new Error("Video assembly timed out after 15 minutes. The operation may still be processing on the server.");
+        }
+        throw fetchError;
+      }
 
       if (!res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({ error: `HTTP ${res.status}: ${res.statusText}` }));
         throw new Error(data.error || "Failed to assemble video");
       }
 
@@ -195,6 +212,24 @@ export function useVideoAssembly({
     }
   }, [pipeline, scriptAudioUrl, setPipeline, queueAutoSave]);
 
+  const resetAssemblyState = useCallback(() => {
+    setIsAssemblingVideo(false);
+    setVideoAssemblyProgress(null);
+    setVideoAssemblyError(null);
+    setPipeline((prev) => ({
+      ...prev,
+      videoAssemblyStatus: "idle",
+      steps: {
+        ...prev.steps,
+        videoAssembly: {
+          ...ensureStepState(prev.steps, "videoAssembly"),
+          status: "idle" as const,
+          errorMessage: undefined,
+        },
+      },
+    }));
+  }, [setPipeline]);
+
   return {
     // State
     isAssemblingVideo,
@@ -204,5 +239,6 @@ export function useVideoAssembly({
     setVideoAssemblyError,
     // Actions
     assembleVideo,
+    resetAssemblyState,
   };
 }

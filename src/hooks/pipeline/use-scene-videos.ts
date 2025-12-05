@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { PipelineState } from "@/types/agent";
+import type { PipelineState, VideoFrameMode } from "@/types/agent";
 import { getFramesForDuration } from "@/lib/video/fal-client";
 import { type ProgressState, ensureStepState } from "./pipeline-types";
 
@@ -50,9 +50,18 @@ export function useSceneVideos({
     const sceneTimestamps = pipeline.narrationTimestamps?.sceneTimestamps || [];
     const productionScenes = pipeline.productionScript?.scenes || [];
 
-    // Log FLF2V status
-    const flf2vScenes = scenesToGenerate.filter((s) => s.lastFrameImageUrl);
-    console.log(`🎬 FLF2V enabled for ${flf2vScenes.length}/${scenesToGenerate.length} scenes`);
+    // Check video frame mode
+    const frameMode: VideoFrameMode = pipeline.videoFrameMode || 'flf2v';
+    const isFirstFrameOnly = frameMode === 'first-frame-only';
+
+    // Log frame mode and FLF2V status
+    console.log(`🎬 Video Frame Mode: ${frameMode}`);
+    if (!isFirstFrameOnly) {
+      const flf2vScenes = scenesToGenerate.filter((s) => s.lastFrameImageUrl);
+      console.log(`🎬 FLF2V enabled for ${flf2vScenes.length}/${scenesToGenerate.length} scenes`);
+    } else {
+      console.log(`🎬 First-frame-only mode: skipping endImageUrl for all scenes`);
+    }
 
     setIsGeneratingSceneVideos(true);
     setSceneVideosError(null);
@@ -71,6 +80,29 @@ export function useSceneVideos({
     }));
 
     const updatedAssets = [...(pipeline.sceneAssets || [])];
+
+    // Reset targeted scenes so new clips replace any previous videos
+    const scenesToGenerateSet = new Set(scenesToGenerate.map((s) => s.sceneNumber));
+    for (let i = 0; i < updatedAssets.length; i++) {
+      const asset = updatedAssets[i];
+      if (!scenesToGenerateSet.has(asset.sceneNumber)) continue;
+      updatedAssets[i] = {
+        ...asset,
+        videoUrl: undefined,
+        targetDurationSec: undefined,
+        generatedNumFrames: undefined,
+        audioStartSec: undefined,
+        audioEndSec: undefined,
+        status: "pending" as const,
+        errorMessage: undefined,
+      };
+    }
+
+    // Push reset state to pipeline immediately so clip previews show as pending/cleared
+    setPipeline((prev) => ({
+      ...prev,
+      sceneAssets: updatedAssets,
+    }));
 
     try {
       // Process in batches of 2 to avoid rate limiting
@@ -142,9 +174,12 @@ export function useSceneVideos({
               numFrames,
             };
 
-            if (scene.lastFrameImageUrl) {
+            // Only include endImageUrl in FLF2V mode
+            if (!isFirstFrameOnly && scene.lastFrameImageUrl) {
               requestBody.endImageUrl = scene.lastFrameImageUrl;
               console.log(`🖼️ Scene ${scene.sceneNumber}: Using FLF2V with last frame`);
+            } else if (isFirstFrameOnly) {
+              console.log(`🖼️ Scene ${scene.sceneNumber}: First-frame-only mode (no endImageUrl)`);
             }
 
             console.log(

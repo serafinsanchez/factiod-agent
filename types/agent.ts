@@ -11,6 +11,15 @@ export type NarrationModelId = 'eleven_v3' | 'eleven_multilingual_v2';
  */
 export type VisualStyleId = 'pixar-3d' | 'paper-craft' | 'documentary';
 
+/**
+ * Video frame generation mode.
+ * - 'flf2v': First-Last-Frame-to-Video - generates both first and last frame images,
+ *   WAN 2.2 interpolates between them for smoother, more controlled motion.
+ * - 'first-frame-only': Single image mode - generates only the first frame,
+ *   WAN 2.2 generates motion freely from the starting image.
+ */
+export type VideoFrameMode = 'flf2v' | 'first-frame-only';
+
 export type StepId =
   | 'keyConcepts'
   | 'hook'
@@ -112,6 +121,12 @@ export interface PipelineState {
   // Video pipeline fields
   /** Visual style for video generation (affects prompts, character usage, etc.) */
   visualStyleId?: VisualStyleId;
+  /**
+   * Video frame generation mode.
+   * - 'flf2v' (default): Generate first + last frame images; WAN 2.2 interpolates between them
+   * - 'first-frame-only': Generate single image; WAN 2.2 generates motion from one frame
+   */
+  videoFrameMode?: VideoFrameMode;
   productionScript?: ProductionScriptData;
   /** Base64-encoded character reference image for visual consistency across scenes */
   characterReferenceImage?: string;
