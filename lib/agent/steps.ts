@@ -1,7 +1,17 @@
 import { StepConfig, StepId } from '../../types/agent';
 import { DEFAULT_MODEL_ID } from '../llm/models';
+import {
+  SCRIPT_PROMPT_TEMPLATE,
+  PRODUCTION_SCRIPT_PROMPT_TEMPLATE,
+  SCENE_IMAGE_PROMPTS_TEMPLATE,
+  SCENE_VIDEO_PROMPTS_TEMPLATE,
+} from './prompts';
 
-const SCRIPT_PROMPT_TEMPLATE = `# PIP Academy Video Script Writing Guide
+// Note: The following prompts are now imported from ./prompts/
+// SCRIPT_PROMPT_TEMPLATE, PRODUCTION_SCRIPT_PROMPT_TEMPLATE,
+// SCENE_IMAGE_PROMPTS_TEMPLATE, SCENE_VIDEO_PROMPTS_TEMPLATE
+
+const _DEPRECATED_SCRIPT_PROMPT_TEMPLATE = `# PIP Academy Video Script Writing Guide
 
 You are an expert writer of educational video scripts for elementary-age kids (around 7–11 years old). You’re writing for a YouTube channel called **PIP Academy**. Your job is to create fun, highly engaging scripts that also teach clearly and accurately. This script will be given to the Elevenlabs text to speech model to create a voiceover for the video.
 
@@ -355,110 +365,7 @@ This step runs client-side via the /api/audio/timestamps endpoint and automatica
     outputVars: ['ProductionScript'],
     // Note: VisualStyle, VisualStyleAtmosphere, VisualStyleOutputExample, and VisualStyleDescriptionGuidelines
     // are injected at runtime based on pipeline.visualStyleId (see interpolatePrompt)
-    promptTemplate: `You are a production director for PIP Academy, an educational kids YouTube channel. Your task is to break down the video script into a detailed **Production Script** with scenes for video generation.
-
-**Input:**
-- Topic: [Topic]
-- Key Concepts: [KeyConcepts]
-- Video Script: [VideoScript]
-- Visual Style: [VisualStyle]
-
----
-
-## SEMANTIC-FIRST SCENE BREAKING (MOST IMPORTANT)
-
-Scene breaks should be driven by **WHAT is being said**, not arbitrary word counts. The visual MUST match the narration content at every moment.
-
-**SCENE BREAK DECISION TREE:**
-1. Is the narration switching to a NEW subject/topic? → NEW SCENE with "topic-change" transition
-2. Is the narration showing a NEW example of the same concept? → NEW SCENE with "same-subject" transition
-3. Is the narration continuing to describe the SAME thing? → SAME SCENE (extend if under 10 seconds)
-4. Would a visual change HERE confuse the viewer? → SAME SCENE
-
-**VISUAL-NARRATION ALIGNMENT (CRITICAL):**
-- The visual MUST directly illustrate what's being said at that exact moment
-- If narration says "the moon" → visual shows the moon
-- If narration says "but here on Earth" → visual shows Earth
-- If narration explains "how volcanoes work" → visual shows volcano cross-section
-- DON'T show generic "thinking" or "reaction" shots when specific educational content is being explained
-- Each visualDescription must be a concrete representation of the narrationText content
-
-**Scene Break Triggers (in priority order):**
-1. **Topic shift**: Moving from one concept to another (e.g., "Now let's talk about...")
-2. **Subject change**: Different object, location, or phenomenon being discussed
-3. **Narrative beat**: Question posed, answer revealed, new example introduced
-4. **Natural pause**: End of complete thought, rhetorical pause
-
-**Scene Continuity Triggers (keep same visual):**
-1. **Same subject**: Still talking about the same thing - extend the scene
-2. **Elaboration**: Adding detail to current point ("And another thing about it...")
-3. **Continuation**: "Also...", "Plus...", "And..."
-
----
-
-## TIMING CONSTRAINTS (WAN 2.2 Video Model)
-
-| Constraint | Value | Rationale |
-|------------|-------|-----------|
-| Min duration | 3 seconds | Shorter clips feel jarring |
-| Target duration | 5-8 seconds | Sweet spot for smooth video |
-| **HARD MAX** | **10 seconds** | WAN 2.2 model limit - NEVER exceed this |
-| Max words/scene | ~25 words | At ~2.5 words/sec kids narration pace |
-
-**If a semantically-coherent segment exceeds 25 words:**
-Split at the most natural sub-point within the explanation, keeping the SAME visual subject but using a different micro-movement. The visual should remain consistent while the narration continues.
-
----
-
-## SCENE CONTINUITY FOR SMOOTH VIDEO
-
-Group related scenes to avoid jarring visual jumps. Use "transitionHint" to indicate how each scene connects:
-- "same-framing": Identical composition, micro-movement only (DEFAULT - smoothest)
-- "same-subject": Same subject, different angle (smooth)
-- "related-cut": Related visual, different subject (acceptable)
-- "topic-change": New section, viewer expects a cut (use sparingly, 5-8 times max per video)
-
-Use "sceneGroup" to organize scenes:
-- "hook": Opening attention-grabber (scenes 1-3)
-- "definition": Explaining what the topic is
-- "concept-1", "concept-2", "concept-3": Key concept explanations
-- "quiz-1", "quiz-2": Quiz segments
-- "wow-fact": Surprising/exciting information
-- "recap": Summary and review
-- "closing": Ending and call-to-action
-
----
-
-## VISUAL DESCRIPTION RULES
-
-1. Each scene = ONE visual moment (a "breathing photograph" with subtle motion)
-2. visualDescription must DIRECTLY ILLUSTRATE the narrationText - no generic filler shots
-3. Keep same subject/location for 3-5 consecutive scenes before major visual change
-4. **TEXT HANDLING**: If text should appear on screen, spell out the EXACT text. Video models cannot generate readable text—it must be baked into the seed image. Example: "Diagram labeled 'Full Moon', 'Half Moon', 'Crescent'" NOT "Diagram with labels"
-5. **ONE SUBJECT PER SCENE (CRITICAL FOR FLF2V)**: Each scene must focus on a SINGLE visual subject that can have ONE micro-movement. AVOID:
-   - Split-screen compositions showing multiple unrelated elements
-   - Montages or collages of different objects
-   - Scenes describing multiple simultaneous actions
-   
-   **✅ GOOD**: "Close-up of orange rust spreading across chrome bike handlebar, water droplets catching light"
-   **❌ BAD**: "Split-screen: Left shows rust on bike, right shows cake batter being whisked"
-   
-   If narration mentions multiple examples, use SEPARATE SCENES for each example.
-
-**Global Atmosphere:**
-[VisualStyleAtmosphere]
-
----
-
-## OUTPUT FORMAT (JSON)
-
-Field names (exact): sceneNumber, narrationText, visualDescription, transitionHint, sceneGroup, estimatedDurationSec
-[VisualStyleOutputExample]
-
-**Visual Description Guidelines:**
-[VisualStyleDescriptionGuidelines]
-
-Output ONLY valid JSON, no commentary.`,
+    promptTemplate: PRODUCTION_SCRIPT_PROMPT_TEMPLATE,
   },
   {
     id: 'characterReferenceImage',
@@ -486,29 +393,7 @@ This step runs client-side via the Gemini image generation API.`,
     inputVars: ['ProductionScript'],
     outputVars: ['SceneImagePrompts'],
     // Note: VisualStyleConsolidatedImageGuidance is injected at runtime based on pipeline.visualStyleId
-    promptTemplate: `Convert each scene's visualDescription into two nearly-identical image prompts for WAN 2.2 FLF2V animation.
-
-**Production Script (scenes to process):**
-[ProductionScript]
-
-[VisualStyleConsolidatedImageGuidance]
-
-## YOUR TASK
-
-For each scene, output:
-- **sceneNumber**: Match the scene number from input
-- **firstFramePrompt**: Complete scene description (25-40 words) - subject, pose, environment, lighting, camera
-- **lastFramePrompt**: IDENTICAL to firstFramePrompt except for ONE micro-movement change explicitly stated
-- **microMovement**: Label for what changes (from the table above)
-
-## RULES
-1. **VISUAL MUST MATCH NARRATION**: The image prompt must illustrate what the narrationText is describing
-2. **90% identical prompts**: Camera, lighting, environment, pose must be identical - only the micro-movement differs
-3. **Explicit change**: State what changes in lastFramePrompt (e.g., "eyes now glancing left" not just "looks curious")
-4. **Text handling**: If text needed, include EXACT text in BOTH prompts identically
-5. **Kid-safe**: Educational, friendly, no scary content
-
-Output ONLY a valid JSON array, no commentary.`,
+    promptTemplate: SCENE_IMAGE_PROMPTS_TEMPLATE,
   },
   {
     id: 'sceneImages',
@@ -533,70 +418,7 @@ This dual-frame approach enables WAN 2.2's FLF2V (First-Last-Frame-to-Video) fea
     inputVars: ['SceneImagePrompts'],
     outputVars: ['SceneVideoPrompts'],
     // Note: VisualStyleConsolidatedVideoGuidance is injected at runtime based on pipeline.visualStyleId
-    promptTemplate: `Generate video motion prompts for WAN 2.2 FLF2V animation.
-
-## INPUT DATA
-[SceneImagePrompts]
-
-[VisualStyleConsolidatedVideoGuidance]
-
-## INSTRUCTIONS
-
-For each scene in the input, create a video prompt that animates the micro-movement between the first and last frame.
-
-**Output JSON array with these fields:**
-- sceneNumber: Copy from input
-- videoPrompt: Motion description under 40 words
-- suggestedDurationSec: 5-10 (max 10)
-- microMovementAnimated: **COPY the "microMovement" field from the input scene EXACTLY AS-IS**
-
-## MICROMOVEMENT FIELD COPYING RULE
-
-The "microMovementAnimated" output field must contain the EXACT SAME STRING as the "microMovement" input field for that scene.
-
-**This is a LITERAL COPY operation, not interpretation:**
-
-| Input microMovement | Output microMovementAnimated |
-|---------------------|------------------------------|
-| "shadow_shift" | "shadow_shift" ← COPY THIS EXACT STRING |
-| "steam_drift" | "steam_drift" ← COPY THIS EXACT STRING |
-| "particle_drift" | "particle_drift" ← COPY THIS EXACT STRING |
-
-**DO NOT:**
-- Invent new labels (NO "rust_spread", "bubble_rise", "liquid_swirl")
-- Describe what you see (NO "bubbles_rising_through_liquid")
-- Combine or modify (NO "shadow_and_light_shift")
-
-**DO:**
-- Copy the microMovement string character-for-character
-
-## VIDEO PROMPT CONTENT
-
-The videoPrompt should describe the motion implied by the microMovement label:
-- shadow_shift → describe shadows moving
-- steam_drift → describe steam drifting  
-- particle_drift → describe particles drifting
-- water_ripple → describe water rippling
-
-Add 1-2 ambient details. End with camera instruction (usually "Static camera.").
-
-## OUTPUT EXAMPLE
-
-Input: \`{"sceneNumber": 1, "microMovement": "shadow_shift", ...}\`
-
-Output:
-\`\`\`json
-{
-  "sceneNumber": 1,
-  "videoPrompt": "Shadows shift slowly across the metal surface. Ambient light holds steady. Dust motes drift gently. Static camera.",
-  "suggestedDurationSec": 7,
-  "microMovementAnimated": "shadow_shift"
-}
-\`\`\`
-
-↑ Note: microMovementAnimated = "shadow_shift" because input microMovement = "shadow_shift"
-
-Output ONLY valid JSON array.`,
+    promptTemplate: SCENE_VIDEO_PROMPTS_TEMPLATE,
   },
   {
     id: 'sceneVideos',

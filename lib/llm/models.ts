@@ -6,6 +6,7 @@ export const SUPPORTED_MODEL_IDS: readonly ModelId[] = [
   DEFAULT_MODEL_ID,
   'gpt-5.1-2025-11-13',
   'kimik2-thinking',
+  'gemini-3-pro',
 ] as const;
 
 const LEGACY_MODEL_ALIASES: Record<string, ModelId> = {

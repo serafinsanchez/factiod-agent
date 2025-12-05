@@ -33,6 +33,7 @@ const MODEL_LABELS: Record<ModelId, string> = {
   "gpt-5.1-2025-11-13": "GPT 5.1",
   "kimik2-thinking": "Kimi K2",
   "claude-sonnet-4.5": "Claude Sonnet 4.5",
+  "gemini-3-pro": "Gemini 3 Pro",
 };
 
 type AgentShellProps = {

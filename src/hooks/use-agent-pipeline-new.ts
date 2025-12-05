@@ -16,6 +16,7 @@ import type {
   NarrationModelId,
   PipelineState,
   ProductionScriptData,
+  ProductionScene,
   StepId,
   StepRunMetrics,
   VariableKey,
@@ -754,16 +755,60 @@ export function useAgentPipeline() {
                 let parsed = JSON.parse(jsonStr) as ProductionScriptData;
                 
                 if (parsed.scenes && Array.isArray(parsed.scenes)) {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  parsed.scenes = parsed.scenes.map((scene: any) => ({
-                    sceneNumber: scene.sceneNumber ?? scene.id ?? scene.number ?? 0,
-                    narrationText: scene.narrationText ?? scene.narration ?? scene.text ?? "",
-                    visualDescription: scene.visualDescription ?? scene.visual ?? scene.description ?? "",
-                    estimatedDurationSec: scene.estimatedDurationSec ?? 
-                                         (scene.endSec && scene.startSec ? (scene.endSec as number) - (scene.startSec as number) : 8),
-                    startSec: typeof scene.startSec === "number" ? scene.startSec : undefined,
-                    endSec: typeof scene.endSec === "number" ? scene.endSec : undefined,
-                  })) as ProductionScriptData["scenes"];
+                  parsed.scenes = parsed.scenes.map((scene) => {
+                    const sceneLike = scene as Partial<ProductionScene> & Record<string, unknown>;
+
+                    const sceneNumber =
+                      typeof sceneLike.sceneNumber === "number"
+                        ? sceneLike.sceneNumber
+                        : typeof sceneLike.id === "number"
+                          ? sceneLike.id
+                          : typeof sceneLike.number === "number"
+                            ? sceneLike.number
+                            : 0;
+
+                    const narrationText =
+                      typeof sceneLike.narrationText === "string"
+                        ? sceneLike.narrationText
+                        : typeof sceneLike.narration === "string"
+                          ? sceneLike.narration
+                          : typeof sceneLike.text === "string"
+                            ? sceneLike.text
+                            : "";
+
+                    const visualDescription =
+                      typeof sceneLike.visualDescription === "string"
+                        ? sceneLike.visualDescription
+                        : typeof sceneLike.visual === "string"
+                          ? sceneLike.visual
+                          : typeof sceneLike.description === "string"
+                            ? sceneLike.description
+                            : "";
+
+                    const estimatedDurationSec =
+                      typeof sceneLike.estimatedDurationSec === "number"
+                        ? sceneLike.estimatedDurationSec
+                        : typeof sceneLike.endSec === "number" && typeof sceneLike.startSec === "number"
+                          ? sceneLike.endSec - sceneLike.startSec
+                          : 8;
+
+                    const startSec = typeof sceneLike.startSec === "number" ? sceneLike.startSec : undefined;
+                    const endSec = typeof sceneLike.endSec === "number" ? sceneLike.endSec : undefined;
+                    const transitionHint =
+                      typeof sceneLike.transitionHint === "string" ? sceneLike.transitionHint : undefined;
+                    const sceneGroup = typeof sceneLike.sceneGroup === "string" ? sceneLike.sceneGroup : undefined;
+
+                    return {
+                      sceneNumber,
+                      narrationText,
+                      visualDescription,
+                      estimatedDurationSec,
+                      startSec,
+                      endSec,
+                      transitionHint,
+                      sceneGroup,
+                    };
+                  }) as ProductionScriptData["scenes"];
                 }
 
                 const narrationTimestamps = prev.narrationTimestamps;
@@ -867,8 +912,8 @@ export function useAgentPipeline() {
               };
               const field = fieldMap[key];
               if (field) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (nextPipeline as any)[field] = value;
+                (nextPipeline as unknown as Record<keyof PipelineState, PipelineState[keyof PipelineState]>)[field] =
+                  value as PipelineState[typeof field];
               }
             }
           }

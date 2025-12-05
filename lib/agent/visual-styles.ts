@@ -225,7 +225,15 @@ Requirements:
 - Feel: Handmade, tactile, "I could make this" craft aesthetic
 
 **NO CHARACTER SHEET NEEDED** - This style focuses on concepts and objects, not characters.
-Objects and concepts can be personified with simple cartoon faces when helpful for engagement.`,
+Objects and concepts can be personified with simple cartoon faces when helpful for engagement.
+
+**SCENE CONTINUITY (CRITICAL FOR SMOOTH VIDEO):**
+Keep the SAME paper craft subject/composition for 3-5 consecutive scenes before changing views. This creates smooth visual flow:
+- Scenes 1-4: Same paper moon composition (paper tilts, shadows shift, layers lift)
+- Scenes 5-8: Different angle on same paper elements (new perspective)
+- Scenes 9-12: New paper craft subject (topic change)
+
+Use "same-framing" transition for consecutive scenes with same subject. Only use "topic-change" when genuinely switching paper craft subjects (5-8 times max per video).`,
 
   productionScriptOutputExample: `\`\`\`json
 {
@@ -265,13 +273,17 @@ Objects and concepts can be personified with simple cartoon faces when helpful f
 | Paper cutout | At rest | Bobs gently as if touched by breeze | paper_bob |
 | Arrow/pointer | Pointing static | Extends slightly, glow appears | arrow_extend |
 | Paper edges | Still | Flutter gently | edge_flutter |
-| Shadow | Fixed angle | Shifts 2-3 degrees | shadow_shift |`,
+| Shadow | Fixed angle | Shifts 2-3 degrees | shadow_shift |
+| Background layer | Static behind | Shifts slightly with parallax | parallax_shift |
+| Paper fold/crease | Fold at rest | Unfolds slightly, catches light | fold_unfold |`,
 
   sceneImagePromptsHints: `- Describe paper craft elements: "Kraft paper cutout of the Earth with visible paper texture"
 - NO human characters - visualize concepts as paper craft objects
 - Objects can have simple cartoon faces for engagement
 - Mention layered depth: "Paper moon in front, paper stars behind with soft shadow between layers"
 - CRITICAL FLF2V: Both prompts must describe 90%+ identical scene. Same paper elements, same layer arrangement, same lighting. Only the microMovement differs.
+- For same-framing scenes, keep the EXACT same paper elements, layering, and camera angle - only the micro-movement changes
+- Paper objects should remain in identical positions between consecutive same-framing scenes
 - Explicitly state what changes in the lastFramePrompt (e.g., "front paper layer now lifted slightly" not just "layers shift")`,
 
   sceneImagePromptsExample: `\`\`\`json
@@ -287,6 +299,7 @@ Objects and concepts can be personified with simple cartoon faces when helpful f
 
   // Scene Video Prompts sections
   sceneVideoBreathingExample: `- ✅ GOOD: "Paper moon tilts slowly 3 degrees to the right. Shadow shifts on background layer to match. Paper texture catches light. Stars remain still. Static camera." (Matches FLF2V paper_tilt)
+- ✅ GOOD: "Front paper layer lifts gently revealing shadow beneath. Background layer remains static. Paper texture catches shifting light. Static camera." (Matches FLF2V layer_lift)
 - ❌ BAD: "Moon flies across the screen and transforms into the Earth." (Too much motion, doesn't match static FLF2V frames)`,
 
   sceneVideoPromptsExample: `\`\`\`json

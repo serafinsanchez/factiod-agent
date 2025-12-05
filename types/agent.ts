@@ -1,4 +1,8 @@
-export type ModelId = 'claude-sonnet-4.5' | 'gpt-5.1-2025-11-13' | 'kimik2-thinking';
+export type ModelId =
+  | 'claude-sonnet-4.5'
+  | 'gpt-5.1-2025-11-13'
+  | 'kimik2-thinking'
+  | 'gemini-3-pro';
 export type NarrationModelId = 'eleven_v3' | 'eleven_multilingual_v2';
 
 /**

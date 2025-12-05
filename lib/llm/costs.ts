@@ -23,6 +23,10 @@ export const PRICES: Record<ModelId, TokenPricing> = {
     input: 3.0, // USD per 1M input tokens
     output: 15.0, // USD per 1M output tokens
   },
+  'gemini-3-pro': {
+    input: 2.0, // USD per 1M input tokens
+    output: 12.0, // USD per 1M output tokens
+  },
 };
 
 export function estimateCost(
