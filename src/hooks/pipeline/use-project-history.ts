@@ -6,6 +6,7 @@ import { getOrCreateProjectSlug, getPublicProjectFileUrl } from "@/lib/projects"
 import {
   createInitialPipeline,
   ensureSessionTotals,
+  ensureCumulativeTotals,
   isPipelineState,
   normalizeNarrationModelId,
   type ThumbnailImage,
@@ -194,14 +195,16 @@ export function useProjectHistory({
       const loadedPipeline = data as PipelineState;
       const resetSteps = resetRunningSteps(loadedPipeline.steps);
       setPipeline((prev) =>
-        ensureSessionTotals({
-          ...prev,
-          ...loadedPipeline,
-          steps: resetSteps,
-          narrationModelId: normalizeNarrationModelId(
-            loadedPipeline.narrationModelId ?? prev.narrationModelId,
-          ),
-        }),
+        ensureCumulativeTotals(
+          ensureSessionTotals({
+            ...prev,
+            ...loadedPipeline,
+            steps: resetSteps,
+            narrationModelId: normalizeNarrationModelId(
+              loadedPipeline.narrationModelId ?? prev.narrationModelId,
+            ),
+          }),
+        ),
       );
       const audioUrl = getPublicProjectFileUrl(loadedPipeline.audioPath);
       setScriptAudioUrl((prevUrl) => {

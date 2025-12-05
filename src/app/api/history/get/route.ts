@@ -28,6 +28,7 @@ type ProjectRow = {
   audio_path: string | null;
   thumbnail_path: string | null;
   pipeline: PipelineState | null;
+  creator_name: string | null;
 };
 
 export async function GET(request: Request) {
@@ -46,7 +47,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase
       .from("projects")
-      .select("id, project_slug, script_path, audio_path, thumbnail_path, pipeline")
+      .select("id, project_slug, script_path, audio_path, thumbnail_path, pipeline, creator_name")
       .eq("id", id)
       .maybeSingle();
 
@@ -85,6 +86,7 @@ export async function GET(request: Request) {
       scriptPath: row.script_path ?? row.pipeline.scriptPath,
       audioPath: row.audio_path ?? row.pipeline.audioPath,
       thumbnailPath: row.thumbnail_path ?? row.pipeline.thumbnailPath,
+      creatorName: row.creator_name ?? row.pipeline.creatorName,
     };
 
     return NextResponse.json(pipeline);

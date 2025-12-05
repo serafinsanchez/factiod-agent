@@ -60,6 +60,11 @@ export async function POST(request: Request) {
     incomingPipeline.projectSlug,
     incomingPipeline.topic,
   );
+  const creatorName =
+    typeof incomingPipeline.creatorName === "string" &&
+    incomingPipeline.creatorName.trim().length > 0
+      ? incomingPipeline.creatorName.trim()
+      : null;
 
   const baseScript =
     incomingPipeline.videoScript?.trim() ||
@@ -127,6 +132,7 @@ export async function POST(request: Request) {
 
     const upsertPayload: Record<string, unknown> = {
       topic: incomingPipeline.topic,
+      creator_name: creatorName,
       model: incomingPipeline.model,
       title: incomingPipeline.title ?? null,
       description: incomingPipeline.description ?? null,
@@ -142,6 +148,7 @@ export async function POST(request: Request) {
         scriptPath: resolvedScriptPathForPayload ?? undefined,
         audioPath: audioPath ?? undefined,
         thumbnailPath: thumbnailPath ?? undefined,
+        creatorName: creatorName ?? undefined,
       },
     };
 
@@ -180,6 +187,7 @@ export async function POST(request: Request) {
       audioPath: (data.audio_path as string | null) ?? audioPath ?? undefined,
       thumbnailPath:
         (data.thumbnail_path as string | null) ?? thumbnailPath ?? undefined,
+      creatorName: (data.creator_name as string | null) ?? creatorName ?? undefined,
     };
 
     return NextResponse.json(persistedPipeline);

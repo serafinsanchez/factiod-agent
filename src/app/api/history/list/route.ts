@@ -4,7 +4,7 @@ import {
   getSupabaseServerClient,
   getSchemaCacheErrorMessage,
 } from "@/lib/supabase/server";
-import type { ModelId } from "@/types/agent";
+import type { ModelId, PipelineState } from "@/types/agent";
 
 type ProjectRow = {
   id: string;
@@ -13,6 +13,8 @@ type ProjectRow = {
   project_slug: string | null;
   model: ModelId;
   created_at: string | null;
+  pipeline: PipelineState | null;
+  creator_name: string | null;
 };
 
 export async function GET() {
@@ -21,7 +23,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from("projects")
-      .select("id, topic, title, project_slug, model, created_at")
+      .select("id, topic, title, project_slug, model, created_at, pipeline, creator_name")
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -45,6 +47,8 @@ export async function GET() {
         projectSlug: row.project_slug,
         model: row.model,
         createdAt: row.created_at,
+        creatorName: row.creator_name ?? row.pipeline?.creatorName ?? null,
+        pipeline: row.pipeline ?? null,
       })) ?? [];
 
     return NextResponse.json({ projects });

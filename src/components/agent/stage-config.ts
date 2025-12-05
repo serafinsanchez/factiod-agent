@@ -1,6 +1,11 @@
 import type { StepId } from "@/types/agent";
 
-export type StageId = "plan" | "script" | "video" | "publish";
+export type StageId =
+  | "scriptAudio"
+  | "timingStory"
+  | "imagery"
+  | "videoGen"
+  | "publishing";
 
 export interface StageDefinition {
   id: StageId;
@@ -11,39 +16,34 @@ export interface StageDefinition {
 
 export const STAGES: StageDefinition[] = [
   {
-    id: "plan",
-    label: "Plan & Hook",
-    description: "Define key concepts, hook, and quizzes that shape the lesson.",
-    steps: ["keyConcepts", "hook", "quizzes"],
+    id: "scriptAudio",
+    label: "Script + Audio",
+    description: "Write the story, add QA, clean narration, and render the voiceover.",
+    steps: ["keyConcepts", "hook", "quizzes", "script", "scriptQA", "narrationClean", "narrationAudioTags", "narrationAudio"],
   },
   {
-    id: "script",
-    label: "Script & Narration",
-    description:
-      "Generate the script, run QA, clean narration, add audio tags, and render the ElevenLabs voiceover.",
-    steps: ["script", "scriptQA", "narrationClean", "narrationAudioTags", "narrationAudio"],
+    id: "timingStory",
+    label: "Timing and Story",
+    description: "Create the production script and align narration timestamps per scene.",
+    steps: ["productionScript", "narrationTimestamps"],
   },
   {
-    id: "video",
-    label: "Video Generation",
-    description:
-      "Create production script, extract narration timestamps aligned to scenes, generate scene images and video clips, then assemble the final video.",
-    steps: [
-      "productionScript",
-      "narrationTimestamps",
-      "characterReferenceImage",
-      "sceneImagePrompts",
-      "sceneImages",
-      "sceneVideoPrompts",
-      "sceneVideos",
-      "videoAssembly",
-    ],
+    id: "imagery",
+    label: "Imagery",
+    description: "Generate character reference, scene image prompts, and scene images.",
+    steps: ["characterReferenceImage", "sceneImagePrompts", "sceneImages"],
   },
   {
-    id: "publish",
-    label: "Title, Description & Thumbnail",
-    description: "Create packaging that helps the video perform on YouTube.",
-    steps: ["titleDescription", "thumbnail", "thumbnailGenerate"],
+    id: "videoGen",
+    label: "Video Gen",
+    description: "Create motion prompts and render scene videos.",
+    steps: ["sceneVideoPrompts", "sceneVideos"],
+  },
+  {
+    id: "publishing",
+    label: "Publishing",
+    description: "Assemble final video, title/description, and thumbnail.",
+    steps: ["videoAssembly", "titleDescription", "thumbnail", "thumbnailGenerate"],
   },
 ];
 

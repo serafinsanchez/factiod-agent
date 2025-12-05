@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { StepEditor } from "./StepEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,19 +9,10 @@ import { slugifyTopic } from "@/lib/slug";
 import type { StepConfig, StepId, VariableKey, SceneAsset, VideoFrameMode } from "@/types/agent";
 import { ChevronDown, Download, PenLine, RefreshCw, X } from "lucide-react";
 
+import { OutputPreview } from "./OutputPreview";
+import { StepEditor } from "./StepEditor";
 import type { UseAgentPipelineReturn } from "@/hooks/use-agent-pipeline";
 import type { StageDefinition, StageId } from "./stage-config";
-
-const GEMINI_THUMBNAIL_COST = {
-  modelLabel: "Gemini 3 Pro (1K-4K)",
-  tokenRange: { min: 1210, max: 2000 },
-  pricePerMillionUsd: 20,
-  costRangeUsd: { min: 0.024, max: 0.04 },
-} as const;
-
-const GEMINI_THUMBNAIL_TOKEN_RANGE_TEXT = `${GEMINI_THUMBNAIL_COST.tokenRange.min.toLocaleString()}-${GEMINI_THUMBNAIL_COST.tokenRange.max.toLocaleString()} tokens`;
-const GEMINI_THUMBNAIL_COST_RANGE_TEXT = `$${GEMINI_THUMBNAIL_COST.costRangeUsd.min.toFixed(3)}-$${GEMINI_THUMBNAIL_COST.costRangeUsd.max.toFixed(3)}`;
-const GEMINI_THUMBNAIL_PRICE_TEXT = `$${GEMINI_THUMBNAIL_COST.pricePerMillionUsd}/1M tokens`;
 
 interface StageViewProps {
   stages: StageDefinition[];
@@ -52,9 +42,7 @@ export function StageView({
   onStepCollapseChangeAction,
 }: StageViewProps) {
   const stepRefs = useRef<Record<StepId, HTMLElement | null>>({} as Record<StepId, HTMLElement | null>);
-  const stageRefs = useRef<Record<StageId, HTMLElement | null>>({} as Record<StageId, HTMLElement | null>);
   const lastVisibleStep = useRef<StepId | null>(null);
-  const lastVisibleStage = useRef<StageId | null>(null);
 
   const stepConfigMap = useMemo(
     () =>
@@ -80,9 +68,12 @@ export function StageView({
     [stages, stepConfigMap],
   );
 
+  const activeStageEntry =
+    stageEntries.find((entry) => entry.stage.id === activeStageId) ?? stageEntries[0] ?? null;
+
   const orderedStepConfigs = useMemo(
-    () => stageEntries.flatMap((entry) => entry.steps),
-    [stageEntries],
+    () => activeStageEntry?.steps ?? [],
+    [activeStageEntry],
   );
 
   useEffect(() => {
@@ -140,87 +131,34 @@ export function StageView({
   }, [orderedStepConfigs, onVisibleStepChange]);
 
   useEffect(() => {
-    if (!onVisibleStageChange) {
-      return;
+    if (onVisibleStageChange && activeStageEntry) {
+      onVisibleStageChange(activeStageEntry.stage.id);
     }
-
-    const firstStageId = stages[0]?.id ?? null;
-    if (firstStageId) {
-      lastVisibleStage.current = firstStageId;
-      onVisibleStageChange(firstStageId);
-    }
-  }, [stages, onVisibleStageChange]);
-
-  useEffect(() => {
-    if (!onVisibleStageChange) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const intersecting = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-
-        let nextStageId: StageId | null = null;
-        if (intersecting.length > 0) {
-          nextStageId = (intersecting[0].target.getAttribute("data-stage-id") ??
-            null) as StageId | null;
-        } else if (entries.length > 0) {
-          const closest = entries.reduce((prev, entry) => {
-            const prevDelta = Math.abs(prev.boundingClientRect.top);
-            const nextDelta = Math.abs(entry.boundingClientRect.top);
-            return nextDelta < prevDelta ? entry : prev;
-          });
-          nextStageId = (closest.target.getAttribute("data-stage-id") ?? null) as StageId | null;
-        }
-
-        if (nextStageId && nextStageId !== lastVisibleStage.current) {
-          lastVisibleStage.current = nextStageId;
-          onVisibleStageChange(nextStageId);
-        }
-      },
-      { rootMargin: "-40% 0px -40% 0px", threshold: 0.25 },
-    );
-
-    stageEntries.forEach(({ stage }) => {
-      const node = stageRefs.current[stage.id];
-      if (node) {
-        observer.observe(node);
-      }
-    });
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [stageEntries, onVisibleStageChange]);
+  }, [activeStageEntry, onVisibleStageChange]);
 
   return (
     <div id="stage-view-top" className="space-y-8">
-      {stageEntries.map(({ stage, steps }, index) => (
+      {activeStageEntry ? (
         <section
-          key={stage.id}
-          id={`stage-${stage.id}`}
-          data-stage-id={stage.id}
-          ref={(node) => {
-            stageRefs.current[stage.id] = node;
-          }}
+          key={activeStageEntry.stage.id}
+          id={`stage-${activeStageEntry.stage.id}`}
+          data-stage-id={activeStageEntry.stage.id}
           className={`space-y-6 rounded-3xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-[0_25px_80px_-60px_rgba(0,0,0,0.85)] scroll-mt-32 transition-colors ${
-            stage.id === activeStageId ? "border-white/60 bg-white/5 shadow-white/10" : ""
+            activeStageEntry.stage.id === activeStageId ? "border-white/60 bg-white/5 shadow-white/10" : ""
           }`}
         >
           <div>
             <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-              {`Stage ${String(index + 1).padStart(2, "0")}`}
+              {`Stage ${String(stages.findIndex((s) => s.id === activeStageEntry.stage.id) + 1).padStart(2, "0")}`}
             </p>
             <p className="mt-1 text-2xl font-semibold tracking-tight text-white">
-              {stage.label}
+              {activeStageEntry.stage.label}
             </p>
-            <p className="mt-2 text-sm text-zinc-400">{stage.description}</p>
+            <p className="mt-2 text-sm text-zinc-400">{activeStageEntry.stage.description}</p>
           </div>
 
           <div className="space-y-6">
-            {steps.map((config) => {
+            {activeStageEntry.steps.map((config) => {
               if (config.id === "narrationAudio") {
                 return (
                   <div
@@ -391,67 +329,28 @@ export function StageView({
                     isCollapsed={isStepCollapsed}
                     onToggleCollapse={() => onStepCollapseChangeAction(config.id, !isStepCollapsed)}
                   />
-
-                  {!isStepCollapsed && config.id === "script" && (
-                    <ScriptExtras
-                      derived={derived}
-                    />
-                  )}
                 </div>
               );
             })}
 
-            {steps.length === 0 && (
+            {activeStageEntry.steps.length === 0 && (
               <div className="rounded-2xl border border-dashed border-zinc-800/60 bg-zinc-950/40 p-4 text-sm text-zinc-500">
                 No visible steps configured for this stage.
               </div>
             )}
+
+            {activeStageEntry.stage.id === "publishing" && (
+              <div className="rounded-2xl border border-zinc-900/80 bg-zinc-950/50 p-4">
+                <OutputPreview state={state} derived={derived} actions={actions} />
+              </div>
+            )}
           </div>
         </section>
-      ))}
-    </div>
-  );
-}
-
-function ScriptExtras({
-  derived,
-}: {
-  derived: UseAgentPipelineReturn["derived"];
-}) {
-  const draftStats = derived.scriptDraftStats;
-
-  if (!draftStats) {
-    return null;
-  }
-
-  return (
-    <div className="space-y-3 rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-4">
-      <div>
-        <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-          Initial script stats
-        </p>
-        <p className="text-xs text-zinc-500">Captured right after Script Generation.</p>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border border-zinc-900 bg-zinc-950/80 p-4">
-          <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-            Word count
-          </p>
-          <p className="mt-1 text-2xl font-semibold text-white">
-            {draftStats.words.toLocaleString()}
-          </p>
-          <p className="text-xs text-zinc-500">Before QA tightening.</p>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-zinc-800/60 bg-zinc-950/40 p-4 text-sm text-zinc-500">
+          No stages configured.
         </div>
-        <div className="rounded-2xl border border-zinc-900 bg-zinc-950/80 p-4">
-          <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-            Character count
-          </p>
-          <p className="mt-1 text-2xl font-semibold text-white">
-            {draftStats.characters.toLocaleString()}
-          </p>
-          <p className="text-xs text-zinc-500">Includes spaces & punctuation.</p>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -472,10 +371,7 @@ function NarrationAudioStep({
     state.pipeline.narrationScript?.trim() ??
     state.pipeline.videoScript?.trim() ??
     "";
-  const audioTaggedNarration =
-    state.pipeline.steps.narrationAudioTags?.responseText?.trim() ?? "";
   const cleanChars = cleanNarrationText.length;
-  const taggedChars = audioTaggedNarration ? audioTaggedNarration.length : cleanChars;
   const narrationReady = cleanChars > 0;
   const rawStatus = stepState?.status ?? "idle";
   const slug = slugifyTopic(topic);
@@ -493,56 +389,6 @@ function NarrationAudioStep({
       ? `${(state.scriptAudioGenerationTimeMs / 1000).toFixed(1)}s`
       : null;
   const errorMessage = state.scriptAudioError ?? stepState?.errorMessage;
-  const selectedModel = state.pipeline.narrationModelId ?? "eleven_v3";
-  const selectedModelLabel =
-    selectedModel === "eleven_v3" ? "Eleven v3" : "Eleven Multilingual v2";
-  const pricingPerThousand = "$0.10 / 1K characters";
-  const formatCostEstimate = (chars: number) => {
-    if (!chars) {
-      return "Waiting for script";
-    }
-    const cost = (chars / 1000) * 0.1;
-    return `${chars.toLocaleString()} chars → ~$${cost.toFixed(2)}`;
-  };
-  const modelOptions = [
-    {
-      id: "eleven_v3" as const,
-      label: "Eleven v3",
-      description: "Expressive delivery with narration audio tags.",
-      limit: "≈5,000 chars • ~3 minutes",
-      chars: taggedChars,
-      scriptNote: audioTaggedNarration
-        ? "Using narration audio tags."
-        : "Audio tags missing — falling back to cleaned narration.",
-    },
-    {
-      id: "eleven_multilingual_v2" as const,
-      label: "Eleven Multilingual v2",
-      description: "Long-form, tag-free narration (multilingual).",
-      limit: "≈10,000 chars • ~10 minutes",
-      chars: cleanChars,
-      scriptNote: "Always uses the cleaned narration from the previous step.",
-    },
-  ];
-
-  const statusLabel =
-    status === "success"
-      ? "Complete"
-      : status === "running"
-        ? "Generating"
-        : status === "error"
-          ? "Needs attention"
-          : "Ready";
-
-  const statusToneClasses =
-    status === "success"
-      ? "text-emerald-200"
-      : status === "error"
-        ? "text-rose-200"
-        : status === "running"
-          ? "text-amber-200"
-          : "text-zinc-400";
-
   const buttonDisabled = !narrationReady || isRunning;
 
   return (
@@ -553,15 +399,10 @@ function NarrationAudioStep({
             {stepConfig.label}
           </p>
           <p className="text-sm text-zinc-400">
-            Choose an ElevenLabs voice model and render the final narration audio.
+            Render the narration audio from your latest cleaned script.
           </p>
         </div>
         <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
-          <span
-            className={`text-[0.6rem] font-semibold uppercase tracking-[0.3em] ${statusToneClasses}`}
-          >
-            {statusLabel}
-          </span>
           <Button
             variant="outline"
             className="rounded-2xl border border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white disabled:opacity-60"
@@ -573,55 +414,8 @@ function NarrationAudioStep({
                 : "Generate the narration script before running this step."
             }
           >
-            {isRunning ? "Generating…" : `Generate voice • ${selectedModelLabel}`}
+            {isRunning ? "Generating…" : "Generate voice"}
           </Button>
-        </div>
-      </div>
-
-      <div className="space-y-3 rounded-2xl border border-zinc-900/70 bg-zinc-950/50 p-4">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-300">
-              Voice model & pricing
-            </p>
-            <p className="text-sm text-zinc-400">
-              fal.ai (running ElevenLabs TTS) charges {pricingPerThousand}. Estimates update with your script length.
-            </p>
-          </div>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          {modelOptions.map((option) => {
-            const isSelected = option.id === selectedModel;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => actions.setNarrationModel(option.id)}
-                className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                  isSelected
-                    ? "border-white/60 bg-white/10 text-white"
-                    : "border-zinc-900 bg-transparent text-zinc-200 hover:border-white/30"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold">{option.label}</p>
-                    <p className="text-xs text-zinc-400">{option.description}</p>
-                  </div>
-                  {isSelected && (
-                    <span className="text-[0.55rem] font-semibold uppercase tracking-[0.35em] text-emerald-200">
-                      Active
-                    </span>
-                  )}
-                </div>
-                <p className="mt-3 text-sm text-zinc-300">{option.limit}</p>
-                <p className="text-xs text-zinc-500">{option.scriptNote}</p>
-                <p className="mt-3 text-xs text-zinc-400">
-                  {formatCostEstimate(option.chars)}
-                </p>
-              </button>
-            );
-          })}
         </div>
       </div>
 
@@ -767,137 +561,12 @@ function ThumbnailGenerationStep({
               Download image
             </Button>
           </div>
-
-          <ThumbnailMetricsPanel state={state} />
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-zinc-800/60 bg-zinc-950/40 p-4 text-sm text-zinc-400">
           Run this step to render the thumbnail frame once your prompt looks good.
         </div>
       )}
-    </div>
-  );
-}
-
-function ThumbnailMetricsPanel({
-  state,
-}: {
-  state: UseAgentPipelineReturn["state"];
-}) {
-  type MetricTileDescriptor = {
-    label: string;
-    value: string;
-    accent?: boolean;
-  };
-
-  const durationValue =
-    state.thumbnailGenerationTime !== null
-      ? `${(state.thumbnailGenerationTime / 1000).toFixed(1)}s`
-      : "—";
-  const metrics = state.thumbnailMetrics;
-  const hasActualMetrics =
-    Boolean(metrics) &&
-    (typeof metrics?.inputTokens === "number" ||
-      typeof metrics?.outputTokens === "number" ||
-      typeof metrics?.totalTokens === "number" ||
-      typeof metrics?.costUsd === "number");
-
-  const formatTokens = (value?: number | null) =>
-    typeof value === "number" ? value.toLocaleString() : "—";
-  const formatCost = (value?: number | null) =>
-    typeof value === "number" ? `$${value.toFixed(4)}` : "—";
-
-  const metricTiles: MetricTileDescriptor[] = hasActualMetrics
-    ? [
-        {
-          label: "Input tokens",
-          value: formatTokens(metrics?.inputTokens),
-        },
-        {
-          label: "Output tokens",
-          value: formatTokens(metrics?.outputTokens),
-        },
-        {
-          label: "Total tokens",
-          value: formatTokens(metrics?.totalTokens),
-        },
-        {
-          label: "Cost (USD)",
-          value: formatCost(metrics?.costUsd),
-          accent: true,
-        },
-      ]
-    : [
-        {
-          label: "Input tokens",
-          value: GEMINI_THUMBNAIL_TOKEN_RANGE_TEXT,
-        },
-        {
-          label: "Output tokens",
-          value: "Image data (n/a)",
-        },
-        {
-          label: "Total tokens",
-          value: GEMINI_THUMBNAIL_TOKEN_RANGE_TEXT,
-        },
-        {
-          label: "Est. cost (USD)",
-          value: GEMINI_THUMBNAIL_COST_RANGE_TEXT,
-          accent: true,
-        },
-      ];
-
-  const gridTiles: MetricTileDescriptor[] = [
-    ...metricTiles,
-    {
-      label: "Duration",
-      value: durationValue,
-    },
-  ];
-
-  const noteText = hasActualMetrics
-    ? `Gemini bills image tokens at ${GEMINI_THUMBNAIL_PRICE_TEXT}. Values above reflect this run.`
-    : `Gemini bills image tokens at ${GEMINI_THUMBNAIL_PRICE_TEXT}. Showing the typical range until we can read billing metadata from the API.`;
-
-  return (
-    <div className="rounded-2xl border border-zinc-900/80 bg-zinc-950/50 p-4">
-      <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-        Thumbnail run metrics (Gemini 3 Pro 1K-4K)
-      </p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {gridTiles.map((tile) => (
-          <ThumbnailMetricTile
-            key={`${tile.label}-${tile.value}`}
-            label={tile.label}
-            value={tile.value}
-            accent={tile.accent}
-          />
-        ))}
-      </div>
-      <p className="mt-3 text-xs text-zinc-500">{noteText}</p>
-    </div>
-  );
-}
-
-function ThumbnailMetricTile({
-  label,
-  value,
-  accent = false,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-2xl border p-4 ${
-        accent ? "border-white/30 bg-white/10 text-white" : "border-zinc-900 bg-zinc-950/70"
-      }`}
-    >
-      <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-        {label}
-      </p>
-      <p className="mt-1 text-xl font-semibold text-white">{value}</p>
     </div>
   );
 }
@@ -940,7 +609,7 @@ function ProductionScriptStep({
         <div className="mb-3">
           <Label className="text-sm font-medium text-white">Video Frame Mode</Label>
           <p className="mt-1 text-xs text-zinc-400">
-            Choose how images are generated for video clips. This affects both the prompts and the video generation process.
+            Pick how frames are generated for each scene.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
@@ -955,9 +624,7 @@ function ProductionScriptStep({
             />
             <div>
               <span className="text-sm font-medium text-white">FLF2V (First + Last Frame)</span>
-              <p className="mt-0.5 text-xs text-zinc-400">
-                Generates both first and last frame images. WAN 2.2 interpolates between them for controlled, smooth motion.
-              </p>
+              <p className="mt-0.5 text-xs text-zinc-400">Generates first and last frames for smoother motion.</p>
             </div>
           </label>
           <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-700 bg-zinc-800/50 p-3 transition-colors hover:bg-zinc-800">
@@ -971,15 +638,9 @@ function ProductionScriptStep({
             />
             <div>
               <span className="text-sm font-medium text-white">First Frame Only</span>
-              <p className="mt-0.5 text-xs text-zinc-400">
-                Generates only the starting image. WAN 2.2 generates motion freely from this single frame.
-              </p>
+              <p className="mt-0.5 text-xs text-zinc-400">Generates a single starting image for the clip.</p>
             </div>
           </label>
-        </div>
-        <div className="mt-3 flex items-center gap-2 text-xs text-zinc-500">
-          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
-          Current: {currentFrameMode === 'flf2v' ? 'FLF2V (First + Last Frame)' : 'First Frame Only'}
         </div>
       </div>
 
@@ -1129,10 +790,6 @@ function SceneImagesStep({
   const completedCount = sceneAssets?.filter((s) => s.imageUrl).length ?? 0;
   const totalCount = sceneAssets?.length ?? 0;
   const hasScenePreviews = Boolean(sceneAssets?.some((s) => s.imageUrl));
-  const previewLimitValue =
-    typeof state.pipeline.scenePreviewLimit === "number"
-      ? state.pipeline.scenePreviewLimit.toString()
-      : "";
   const [selectedSceneNumber, setSelectedSceneNumber] = useState<number | null>(null);
   const [selectedFrameKind, setSelectedFrameKind] = useState<FrameKind>("first");
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
@@ -1290,42 +947,6 @@ function SceneImagesStep({
         </div>
       )}
 
-      <div className="space-y-2 rounded-2xl border border-zinc-900/80 bg-zinc-950/40 p-4 text-sm">
-        <div className="flex items-center justify-between">
-          <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-            Run scope
-          </p>
-          {typeof state.pipeline.scenePreviewLimit === "number" && state.pipeline.scenePreviewLimit > 0 ? (
-            <span className="text-xs text-emerald-200">
-              Previewing first {state.pipeline.scenePreviewLimit} scenes
-            </span>
-          ) : (
-            <span className="text-xs text-zinc-400">All scenes</span>
-          )}
-        </div>
-        <Input
-          type="number"
-          min={1}
-          inputMode="numeric"
-          pattern="[0-9]*"
-          placeholder="e.g. 5"
-          value={previewLimitValue}
-          onChange={(event) => {
-            const raw = event.target.value;
-            if (!raw) {
-              actions.setScenePreviewLimit(null);
-              return;
-            }
-            const parsed = Number(raw);
-            actions.setScenePreviewLimit(Number.isFinite(parsed) ? parsed : null);
-          }}
-          className="h-11 rounded-2xl border-zinc-800 bg-zinc-950/80 text-sm text-white placeholder:text-zinc-500"
-        />
-        <p className="text-xs text-zinc-500">
-          Number of scenes to generate. Each scene produces 2 images (first &amp; last frame), e.g. 5 scenes → 10 images. Leave blank or 0 to render every scene.
-        </p>
-      </div>
-
       {progress && isRunning && (
         <div className="space-y-2">
           <div className="h-2 rounded-full bg-zinc-900">
@@ -1399,18 +1020,6 @@ function SceneVideosStep({
   const hasReadyScenes = sceneAssets?.some((s) => s.imageUrl && s.videoPrompt);
   const completedCount = sceneAssets?.filter((s) => s.videoUrl).length ?? 0;
   const totalCount = sceneAssets?.filter((s) => s.imageUrl && s.videoPrompt).length ?? 0;
-  const previewLimit = state.pipeline.scenePreviewLimit;
-
-  // Debug: breakdown of scene readiness
-  const totalScenes = sceneAssets?.length ?? 0;
-  const scenesWithImage = sceneAssets?.filter((s) => s.imageUrl).length ?? 0;
-  const scenesWithVideoPrompt = sceneAssets?.filter((s) => s.videoPrompt).length ?? 0;
-  const readySceneCount = sceneAssets?.filter((s) => s.imageUrl && s.videoPrompt).length ?? 0;
-  
-  // Get scene numbers for debugging mismatches
-  const sceneNumbersWithImage = sceneAssets?.filter((s) => s.imageUrl).map((s) => s.sceneNumber) ?? [];
-  const sceneNumbersWithVideoPrompt = sceneAssets?.filter((s) => s.videoPrompt).map((s) => s.sceneNumber) ?? [];
-  const readySceneNumbers = sceneAssets?.filter((s) => s.imageUrl && s.videoPrompt).map((s) => s.sceneNumber) ?? [];
 
   // Video clips ready for display
   const videoClips = useMemo(() => {
@@ -1493,56 +1102,6 @@ function SceneVideosStep({
         </div>
       )}
 
-      {/* Debug panel: Scene readiness breakdown */}
-      {totalScenes > 0 && (
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
-          <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-            Scene Readiness Debug
-          </p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
-              <p className="text-xs text-zinc-500">Total Scenes</p>
-              <p className="text-lg font-semibold text-white">{totalScenes}</p>
-            </div>
-            <div className={`rounded-xl border p-3 ${scenesWithImage > 0 ? "border-emerald-500/30 bg-emerald-500/10" : "border-zinc-800 bg-zinc-950/60"}`}>
-              <p className="text-xs text-zinc-500">With Image</p>
-              <p className={`text-lg font-semibold ${scenesWithImage > 0 ? "text-emerald-200" : "text-zinc-400"}`}>{scenesWithImage}</p>
-            </div>
-            <div className={`rounded-xl border p-3 ${scenesWithVideoPrompt > 0 ? "border-emerald-500/30 bg-emerald-500/10" : "border-zinc-800 bg-zinc-950/60"}`}>
-              <p className="text-xs text-zinc-500">With Video Prompt</p>
-              <p className={`text-lg font-semibold ${scenesWithVideoPrompt > 0 ? "text-emerald-200" : "text-zinc-400"}`}>{scenesWithVideoPrompt}</p>
-            </div>
-            <div className={`rounded-xl border p-3 ${readySceneCount > 0 ? "border-white/30 bg-white/10" : "border-rose-500/30 bg-rose-500/10"}`}>
-              <p className="text-xs text-zinc-500">Ready (Both)</p>
-              <p className={`text-lg font-semibold ${readySceneCount > 0 ? "text-white" : "text-rose-200"}`}>{readySceneCount}</p>
-            </div>
-          </div>
-          
-          {/* Show scene number details if there's a mismatch */}
-          {scenesWithImage > 0 && scenesWithVideoPrompt > 0 && readySceneCount === 0 && (
-            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 space-y-2">
-              <p className="text-xs font-semibold text-rose-200">Scene Number Mismatch Detected</p>
-              <p className="text-xs text-rose-100">
-                Images on scenes: {sceneNumbersWithImage.join(", ") || "none"}
-              </p>
-              <p className="text-xs text-rose-100">
-                Video prompts on scenes: {sceneNumbersWithVideoPrompt.join(", ") || "none"}
-              </p>
-              <p className="text-xs text-zinc-400 mt-2">
-                The scene numbers don&apos;t overlap. This usually means the video prompts step created new scene entries instead of updating existing ones.
-              </p>
-            </div>
-          )}
-          
-          {/* Show ready scene numbers when available */}
-          {readySceneCount > 0 && (
-            <p className="text-xs text-zinc-500">
-              Ready scenes: {readySceneNumbers.join(", ")}
-            </p>
-          )}
-        </div>
-      )}
-
       {errorMessage && (
         <div
           role="alert"
@@ -1562,22 +1121,9 @@ function SceneVideosStep({
           </div>
           <p className="text-xs text-zinc-500">
             Generating video clip {progress.completed + 1} of {progress.total}...
-            <br />
-            <span className="text-zinc-600">Each clip takes 2-5 minutes to generate.</span>
           </p>
         </div>
       )}
-
-      <div className="rounded-2xl border border-zinc-900/80 bg-zinc-950/40 px-4 py-3 text-xs text-zinc-400">
-        {typeof previewLimit === "number" && previewLimit > 0 ? (
-          <>
-            This run will animate only the first {previewLimit} ready scenes. Update the limit above
-            if you need more.
-          </>
-        ) : (
-          "Currently set to animate every ready scene. Set a preview limit above to trim the run."
-        )}
-      </div>
 
       {completedCount > 0 && (
         <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 space-y-4">

@@ -160,6 +160,8 @@ export function useThumbnailGeneration({
         const sessionTotals = getAccumulatedSessionTotals(prev, thumbnailStepMetrics);
         nextPipeline.sessionTotalTokens = sessionTotals.sessionTotalTokens;
         nextPipeline.sessionTotalCostUsd = sessionTotals.sessionTotalCostUsd;
+        nextPipeline.cumulativeTokens = sessionTotals.cumulativeTokens;
+        nextPipeline.cumulativeCostUsd = sessionTotals.cumulativeCostUsd;
         if (typeof storagePath === "string" && storagePath.trim().length > 0) {
           nextPipeline.thumbnailPath = storagePath;
         }

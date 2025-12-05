@@ -46,6 +46,7 @@ import {
   calculateStepTotals,
   ensureStepState,
   ensureSessionTotals,
+  ensureCumulativeTotals,
   getAccumulatedSessionTotals,
   isPipelineState,
   normalizeNarrationModelId,
@@ -456,6 +457,8 @@ export function useAgentPipeline() {
             totalCostUsd: totals.totalCostUsd,
             sessionTotalTokens: sessionTotals.sessionTotalTokens,
             sessionTotalCostUsd: sessionTotals.sessionTotalCostUsd,
+            cumulativeTokens: sessionTotals.cumulativeTokens,
+            cumulativeCostUsd: sessionTotals.cumulativeCostUsd,
           };
         });
 
@@ -895,6 +898,8 @@ export function useAgentPipeline() {
             totalCostUsd: totals.totalCostUsd,
             sessionTotalTokens: sessionTotals.sessionTotalTokens,
             sessionTotalCostUsd: sessionTotals.sessionTotalCostUsd,
+            cumulativeTokens: sessionTotals.cumulativeTokens,
+            cumulativeCostUsd: sessionTotals.cumulativeCostUsd,
           };
         });
 
@@ -962,16 +967,18 @@ export function useAgentPipeline() {
       const data = await response.json();
       if (isPipelineState(data)) {
         setPipeline((prev) =>
-          ensureSessionTotals({
-            ...prev,
-            ...data,
-            id: data.id ?? prev.id,
-            projectSlug: data.projectSlug ?? prev.projectSlug,
-            characterReferenceImage: prev.characterReferenceImage || data.characterReferenceImage,
-            narrationModelId: normalizeNarrationModelId(
-              data.narrationModelId ?? prev.narrationModelId,
-            ),
-          }),
+          ensureCumulativeTotals(
+            ensureSessionTotals({
+              ...prev,
+              ...data,
+              id: data.id ?? prev.id,
+              projectSlug: data.projectSlug ?? prev.projectSlug,
+              characterReferenceImage: prev.characterReferenceImage || data.characterReferenceImage,
+              narrationModelId: normalizeNarrationModelId(
+                data.narrationModelId ?? prev.narrationModelId,
+              ),
+            }),
+          ),
         );
 
         const nextNarrationScript =

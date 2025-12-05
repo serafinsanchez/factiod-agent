@@ -70,6 +70,7 @@ export function createInitialSteps(): Record<StepId, StepRunState> {
 export function createInitialPipeline(visualStyleId?: VisualStyleId): PipelineState {
   return {
     topic: "",
+    creatorName: "",
     model: DEFAULT_MODEL_ID,
     narrationModelId: DEFAULT_NARRATION_MODEL,
     visualStyleId: visualStyleId ?? DEFAULT_VISUAL_STYLE_ID,
@@ -79,6 +80,8 @@ export function createInitialPipeline(visualStyleId?: VisualStyleId): PipelineSt
     totalCostUsd: 0,
     sessionTotalTokens: 0,
     sessionTotalCostUsd: 0,
+    cumulativeTokens: 0,
+    cumulativeCostUsd: 0,
   };
 }
 
@@ -123,10 +126,29 @@ export function ensureSessionTotals(pipeline: PipelineState): PipelineState {
   };
 }
 
+export function ensureCumulativeTotals(pipeline: PipelineState): PipelineState {
+  const fallbackTokens = typeof pipeline.totalTokens === "number" ? pipeline.totalTokens : 0;
+  const fallbackCost = typeof pipeline.totalCostUsd === "number" ? pipeline.totalCostUsd : 0;
+  return {
+    ...pipeline,
+    cumulativeTokens:
+      typeof pipeline.cumulativeTokens === "number" ? pipeline.cumulativeTokens : fallbackTokens,
+    cumulativeCostUsd:
+      typeof pipeline.cumulativeCostUsd === "number"
+        ? pipeline.cumulativeCostUsd
+        : fallbackCost,
+  };
+}
+
 export function getAccumulatedSessionTotals(
   pipeline: PipelineState,
   metrics?: StepRunMetrics,
-): { sessionTotalTokens: number; sessionTotalCostUsd: number } {
+): {
+  sessionTotalTokens: number;
+  sessionTotalCostUsd: number;
+  cumulativeTokens: number;
+  cumulativeCostUsd: number;
+} {
   const currentTokens =
     typeof pipeline.sessionTotalTokens === "number"
       ? pipeline.sessionTotalTokens
@@ -146,6 +168,8 @@ export function getAccumulatedSessionTotals(
   return {
     sessionTotalTokens: currentTokens + deltaTokens,
     sessionTotalCostUsd: currentCost + deltaCost,
+    cumulativeTokens: (pipeline.cumulativeTokens ?? pipeline.totalTokens ?? 0) + deltaTokens,
+    cumulativeCostUsd: (pipeline.cumulativeCostUsd ?? pipeline.totalCostUsd ?? 0) + deltaCost,
   };
 }
 
@@ -184,23 +208,25 @@ export function loadInitialPipeline(): PipelineState {
           const normalizedNarrationModel = normalizeNarrationModelId(
             parsed.narrationModelId,
           );
-          return ensureSessionTotals({
-            ...base,
-            ...parsed,
-            model: resolvedModel,
-            narrationModelId: normalizedNarrationModel,
-            steps: {
-              ...base.steps,
-              ...parsed.steps,
-            },
-          });
+          return ensureCumulativeTotals(
+            ensureSessionTotals({
+              ...base,
+              ...parsed,
+              model: resolvedModel,
+              narrationModelId: normalizedNarrationModel,
+              steps: {
+                ...base.steps,
+                ...parsed.steps,
+              },
+            }),
+          );
         }
       }
     } catch {
       // ignore malformed storage entries
     }
   }
-  return createInitialPipeline();
+  return ensureCumulativeTotals(createInitialPipeline());
 }
 
 export function downloadTextFile(filename: string, content: string, mimeType = "text/plain") {

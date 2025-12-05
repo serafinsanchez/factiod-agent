@@ -157,6 +157,8 @@ export function useNarrationAudio({
             totalCostUsd: totals.totalCostUsd,
             sessionTotalTokens: sessionTotals.sessionTotalTokens,
             sessionTotalCostUsd: sessionTotals.sessionTotalCostUsd,
+            cumulativeTokens: sessionTotals.cumulativeTokens,
+            cumulativeCostUsd: sessionTotals.cumulativeCostUsd,
           };
         });
         queueAutoSave();

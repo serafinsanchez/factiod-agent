@@ -90,6 +90,8 @@ export interface StepRunState {
 
 export interface PipelineState {
   topic: string;
+  /** Optional creator label for display in project lists */
+  creatorName?: string | null;
   keyConcepts?: string;
   hookScript?: string;
   quizInfo?: string;
@@ -104,6 +106,12 @@ export interface PipelineState {
   totalCostUsd: number;
   sessionTotalTokens?: number;
   sessionTotalCostUsd?: number;
+  /**
+   * Cumulative totals across all saves/iterations of the project.
+   * Used for admin reporting; session totals continue to reflect the current run.
+   */
+  cumulativeTokens?: number;
+  cumulativeCostUsd?: number;
   narrationModelId?: NarrationModelId;
   /**
    * Optional fields used for persistence of projects/history.
@@ -145,10 +153,15 @@ export interface HistoryProject {
   id: string;
   topic: string;
   title?: string | null;
+  /** Creator attribution for the project list */
+  creatorName?: string | null;
   projectSlug?: string | null;
   model: ModelId;
   createdAt?: string | null;
+  pipeline?: PipelineState | null;
 }
+
+export type ProjectStatus = "draft" | "in-progress" | "review" | "complete";
 
 // ============================================
 // Audio Timestamps Types
