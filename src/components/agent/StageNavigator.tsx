@@ -53,6 +53,11 @@ interface StageNavigatorProps {
   onCollapseChange?: (collapsed: boolean) => void;
   onExpandAllSteps?: () => void;
   onCollapseAllSteps?: () => void;
+  // Additional state for deriving correct narrationAudio step status
+  narrationAudioState?: {
+    hasAudioUrl: boolean;
+    hasError: boolean;
+  };
 }
 
 export const STATUS_STYLES: Record<StageTone, { text: string; dot: string; bar: string }> = {
@@ -121,7 +126,33 @@ export function StageNavigator({
   onCollapseChange,
   onExpandAllSteps,
   onCollapseAllSteps,
+  narrationAudioState,
 }: StageNavigatorProps) {
+  // Derive correct step states, overriding narrationAudio status if we have audio
+  const derivedStepStates = useMemo(() => {
+    if (!narrationAudioState) {
+      return stepStates;
+    }
+    const narrationStep = stepStates.narrationAudio;
+    if (!narrationStep) {
+      return stepStates;
+    }
+    // If we have audio URL and no error, and status is "running", override to "success"
+    const shouldOverrideToSuccess =
+      narrationAudioState.hasAudioUrl &&
+      !narrationAudioState.hasError &&
+      narrationStep.status === "running";
+    if (!shouldOverrideToSuccess) {
+      return stepStates;
+    }
+    return {
+      ...stepStates,
+      narrationAudio: {
+        ...narrationStep,
+        status: "success" as const,
+      },
+    };
+  }, [stepStates, narrationAudioState]);
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [areVariablesCollapsed, setAreVariablesCollapsed] = useState(false);
   const [expandedStages, setExpandedStages] = useState<Record<StageId, boolean>>(() => {
@@ -312,7 +343,7 @@ export function StageNavigator({
         <div className="space-y-3" role="navigation" aria-label="Workflow stages">
           {stages.map((stage, index) => {
             const stepStatuses = stage.steps.map(
-              (stepId) => stepStates[stepId]?.status ?? "idle",
+              (stepId) => derivedStepStates[stepId]?.status ?? "idle",
             );
             const completedCount = stepStatuses.filter((status) => status === "success").length;
             const totalCount = stage.steps.length || 1;
@@ -387,7 +418,7 @@ export function StageNavigator({
                         return null;
                       }
 
-                      const stepState = stepStates[stepId];
+                      const stepState = derivedStepStates[stepId];
                       const stepStatus = getStageStatus([stepState?.status ?? "idle"]);
                       const stepStyles = STATUS_STYLES[stepStatus.tone];
                       const isActiveStep = currentStepId === stepId;

@@ -29,9 +29,11 @@ Create a `.env.local` file with the required API keys:
 - `SUPABASE_SERVICE_ROLE_KEY` – service role key (used only on the server, never expose it to the client).
 - `GEMINI_API_KEY` – for thumbnail generation.
 - `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` – for TTS (see `src/lib/tts/elevenlabs.ts`).
+- `ELEVENLABS_MULTILINGUAL_V2_VOICE` – (optional) preset voice name for the Multilingual v2 model (e.g., `Daniel`, `Rachel`, `Aria`). Defaults to `Daniel`. Custom voice IDs may produce silent audio with this model.
 - `OPENAI_API_KEY` – for the default GPT-5.1 model.
 - `MOONSHOT_API_KEY` – for the Kimi K2 Thinking model (`kimik2-thinking`).
 - `ANTHROPIC_API_KEY` – for the Claude Sonnet 4.5 model (`claude-sonnet-4.5`) via the Anthropic Messages API.
+- `FAL_KEY` – for Whisper audio transcription and video generation via fal.ai.
 
 After setting the keys you can dry-run individual models with:
 
@@ -40,6 +42,61 @@ pnpm ts-node --transpile-only scripts/test-llm.ts claude-sonnet-4.5
 ```
 
 Omit the final argument to hit the Kimi model or pass any supported `ModelId`. The script prints the raw response plus token usage and the estimated cost, which is handy for verifying new keys locally.
+
+## Narration Timestamps API
+
+The app includes an API endpoint to extract word-level timestamps from narration audio using Whisper transcription. This enables precise audio-video synchronization in the video assembly pipeline.
+
+### Endpoint: `POST /api/audio/timestamps`
+
+Extract word-level timestamps from a publicly accessible audio URL.
+
+**Request:**
+```bash
+curl -X POST http://localhost:3000/api/audio/timestamps \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "audioUrl": "https://example.com/narration.mp3",
+    "language": "en",
+    "modelId": "WHISPER"
+  }'
+```
+
+**Response:**
+```json
+{
+  "timestamps": {
+    "words": [
+      { "word": "Hello", "start": 0.0, "end": 0.5 },
+      { "word": "world", "start": 0.5, "end": 1.0 }
+    ],
+    "segments": [
+      {
+        "text": "Hello world",
+        "start": 0.0,
+        "end": 1.0,
+        "words": [...]
+      }
+    ],
+    "totalDurationSec": 1.0
+  },
+  "durationMs": 1234
+}
+```
+
+**Parameters:**
+- `audioUrl` (required): Public HTTPS URL of the audio file to transcribe
+- `language` (optional): Language code (e.g., "en"). Auto-detected if not specified
+- `modelId` (optional): Whisper model to use - `"WHISPER"` (default) or `"WIZPER"` (2x faster)
+
+**Health Check: `GET /api/audio/timestamps`**
+
+Check if Whisper transcription is configured:
+```bash
+curl http://localhost:3000/api/audio/timestamps
+```
+
+Returns `{"whisperAvailable": true}` if `FAL_KEY` is set.
 
 ## Supabase Configuration
 

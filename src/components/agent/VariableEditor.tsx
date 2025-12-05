@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import type { VariableKey } from "@/types/agent";
 import { VARIABLE_DEFINITIONS, VARIABLE_LABELS } from "@/lib/agent/variable-metadata";
 
@@ -58,6 +59,9 @@ export function VariableEditor({
 
   const definition = variableKey ? DEFINITION_MAP[variableKey] : undefined;
   const label = variableKey ? VARIABLE_LABELS[variableKey] : "Variable";
+  const isReadOnly = definition?.isReadOnly ?? false;
+  const valueType = definition?.valueType ?? "text";
+  const isJsonValue = valueType === "json";
 
   if (!isBrowser || !isOpen || !variableKey) {
     return null;
@@ -92,11 +96,21 @@ export function VariableEditor({
               <Textarea
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
-                className="min-h-[220px] resize-none rounded-2xl border-zinc-800 bg-zinc-900/60 text-sm text-white"
+                readOnly={isReadOnly}
+                className={cn(
+                  "min-h-[220px] resize-none rounded-2xl border-zinc-800 bg-zinc-900/60 text-sm text-white",
+                  isReadOnly && "cursor-not-allowed opacity-80",
+                  isJsonValue && "font-mono text-xs",
+                )}
               />
               <p className="text-xs text-zinc-500">
                 {stats.words.toLocaleString()} words · {stats.characters.toLocaleString()} characters
               </p>
+              {isReadOnly && (
+                <p className="text-xs text-zinc-400">
+                  This variable is generated automatically and can&apos;t be edited manually.
+                </p>
+              )}
             </div>
           </div>
 
@@ -109,13 +123,15 @@ export function VariableEditor({
             >
               Cancel
             </Button>
-            <Button
-              type="button"
-              className="rounded-full bg-white px-6 text-sm font-semibold text-zinc-900 hover:bg-zinc-200"
-              onClick={() => onSave(variableKey, value)}
-            >
-              Save variable
-            </Button>
+            {!isReadOnly && (
+              <Button
+                type="button"
+                className="rounded-full bg-white px-6 text-sm font-semibold text-zinc-900 hover:bg-zinc-200"
+                onClick={() => onSave(variableKey, value)}
+              >
+                Save variable
+              </Button>
+            )}
           </div>
         </div>
       </div>

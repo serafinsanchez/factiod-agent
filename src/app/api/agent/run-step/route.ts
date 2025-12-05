@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { runStep } from '../../../../../lib/agent/runStep';
 import { extractFinalScript, runScriptQaWithWordGoal } from '../../../../../lib/agent/scriptQA';
-import { getStepConfig } from '../../../../../lib/agent/steps';
+import { getStepConfig, SERVER_EXECUTABLE_STEP_IDS } from '../../../../../lib/agent/steps';
 import { normalizeModelId } from '../../../../../lib/llm/models';
 import type { ModelId, StepId } from '../../../../../types/agent';
 
@@ -22,20 +22,10 @@ type ParsedRunStepRequestBody = {
   promptTemplateOverride?: string;
 };
 
-const STEP_IDS: StepId[] = [
-  'keyConcepts',
-  'hook',
-  'quizzes',
-  'script',
-  'scriptQA',
-  'narrationClean',
-  'narrationAudioTags',
-  'titleDescription',
-  'thumbnail',
-];
+const SERVER_STEP_IDS = new Set<StepId>(SERVER_EXECUTABLE_STEP_IDS);
 
 function isStepId(value: unknown): value is StepId {
-  return typeof value === 'string' && STEP_IDS.includes(value as StepId);
+  return typeof value === 'string' && SERVER_STEP_IDS.has(value as StepId);
 }
 
 function normalizeVariables(
@@ -123,7 +113,39 @@ export async function POST(request: Request) {
 
     const step = getStepConfig(stepId);
 
+    // Use step's defaultModel if available, otherwise use the provided model
+    const effectiveModel = step.defaultModel ?? model;
+
+    // Enhanced logging for steps that need high token limits
+    const isProductionScript = stepId === 'productionScript';
+    const isSceneImagePrompts = stepId === 'sceneImagePrompts';
+    const isSceneVideoPrompts = stepId === 'sceneVideoPrompts';
+    const needsHighTokenLimit = isProductionScript || isSceneImagePrompts || isSceneVideoPrompts;
+    
+    if (needsHighTokenLimit) {
+      const productionScript = variables.ProductionScript;
+      const scriptSize = productionScript ? JSON.stringify(productionScript).length : 0;
+      let estimatedScenes = 0;
+      if (productionScript) {
+        try {
+          const parsed = JSON.parse(productionScript);
+          estimatedScenes = parsed?.scenes?.length || 0;
+        } catch {
+          // Ignore parse errors for logging
+        }
+      }
+      console.log(`[API] 🎬 ${step.label} Step - Server Side:`);
+      console.log(`[API]   Model: ${effectiveModel}`);
+      console.log(`[API]   Max tokens: 16384`);
+      if (productionScript) {
+        console.log(`[API]   Production Script size: ${(scriptSize / 1024).toFixed(1)} KB`);
+        console.log(`[API]   Estimated scenes: ${estimatedScenes}`);
+      }
+      console.log(`[API]   Starting LLM call...`);
+    }
+
     const runner = stepId === 'scriptQA' ? runScriptQaWithWordGoal : runStep;
+    const llmStartTime = Date.now();
 
     const {
       resolvedPrompt,
@@ -132,11 +154,20 @@ export async function POST(request: Request) {
       producedVariables: baseProducedVariables,
     } = await runner({
       step,
-      model,
+      model: effectiveModel,
       topic,
       variables,
       promptTemplateOverride,
     });
+
+    if (needsHighTokenLimit) {
+      const llmDuration = Date.now() - llmStartTime;
+      const responseSize = responseText?.length || 0;
+      console.log(`[API]   ✓ LLM call completed`);
+      console.log(`[API]   Duration: ${(llmDuration / 1000).toFixed(1)}s`);
+      console.log(`[API]   Response size: ${(responseSize / 1024).toFixed(1)} KB`);
+      console.log(`[API]   Tokens: ${metrics?.totalTokens || 0} (input: ${metrics?.inputTokens || 0}, output: ${metrics?.outputTokens || 0})`);
+    }
 
     let producedVariables = { ...baseProducedVariables };
 

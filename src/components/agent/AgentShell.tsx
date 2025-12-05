@@ -8,6 +8,7 @@ import { StageView } from "./StageView";
 import { OutputPreview } from "./OutputPreview";
 import { VariableEditor } from "./VariableEditor";
 import { StageNavigator } from "./StageNavigator";
+import { StyleSelector } from "./StyleSelector";
 import { STAGES, type StageId } from "./stage-config";
 import type { UseAgentPipelineReturn } from "@/hooks/use-agent-pipeline";
 import { Button } from "@/components/ui/button";
@@ -21,11 +22,11 @@ import { STEP_CONFIGS } from "@/lib/agent/steps";
 import { getModelOptions } from "@/lib/llm/models";
 import {
   VARIABLE_DEFINITIONS,
-  VARIABLE_KEY_TO_PIPELINE_FIELD,
+  getVariableDisplayValue,
   getVariableValueFromPipeline,
 } from "@/lib/agent/variable-metadata";
 import { cn } from "@/lib/utils";
-import type { ModelId, StepId, VariableKey } from "@/types/agent";
+import type { ModelId, StepId, VariableKey, VisualStyleId } from "@/types/agent";
 
 const MODEL_OPTIONS = getModelOptions();
 const MODEL_LABELS: Record<ModelId, string> = {
@@ -65,6 +66,7 @@ export function AgentShell({
   const [editingVariable, setEditingVariable] = useState<VariableKey | null>(null);
   const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(true);
   const [visibleStepId, setVisibleStepId] = useState<StepId | null>(null);
+  const [isStyleSelectorOpen, setIsStyleSelectorOpen] = useState(false);
   const [collapsedSteps, setCollapsedSteps] = useState<Record<StepId, boolean>>(() => {
     const initial: Record<StepId, boolean> = {} as Record<StepId, boolean>;
     STEP_CONFIGS.forEach((config) => {
@@ -82,15 +84,11 @@ export function AgentShell({
 
   const variableSummaries = useMemo(
     () =>
-      VARIABLE_DEFINITIONS.map((definition) => {
-        const field = VARIABLE_KEY_TO_PIPELINE_FIELD[definition.key];
-        const rawValue = state.pipeline[field];
-        return {
-          key: definition.key,
-          label: definition.label,
-          value: typeof rawValue === "string" ? rawValue : "",
-        };
-      }),
+      VARIABLE_DEFINITIONS.map((definition) => ({
+        key: definition.key,
+        label: definition.label,
+        value: getVariableDisplayValue(state.pipeline, definition.key),
+      })),
     [state.pipeline],
   );
   const canDownloadVoiceover = Boolean(state.scriptAudioUrl);
@@ -107,7 +105,12 @@ export function AgentShell({
     return map;
   }, []);
   const handleNewProject = () => {
-    actions.newProject();
+    setIsStyleSelectorOpen(true);
+  };
+
+  const handleStyleSelected = (styleId: VisualStyleId) => {
+    setIsStyleSelectorOpen(false);
+    actions.newProject(styleId);
     onStageChangeAction("plan");
   };
 
@@ -316,6 +319,10 @@ export function AgentShell({
                     totalTokens: pipeline.sessionTotalTokens ?? pipeline.totalTokens,
                     totalCostUsd: pipeline.sessionTotalCostUsd ?? pipeline.totalCostUsd,
                   }}
+                  narrationAudioState={{
+                    hasAudioUrl: Boolean(state.scriptAudioUrl),
+                    hasError: Boolean(state.scriptAudioError),
+                  }}
                 />
               </section>
 
@@ -330,7 +337,7 @@ export function AgentShell({
                   onEditVariable={(variable) => setEditingVariable(variable)}
                   onVisibleStepChange={handleVisibleStepChange}
                   collapsedSteps={collapsedSteps}
-                  onStepCollapseChange={handleStepCollapseChange}
+                  onStepCollapseChangeAction={handleStepCollapseChange}
                 />
               </section>
 
@@ -367,15 +374,19 @@ export function AgentShell({
                       onExportScript: actions.exportScriptMarkdown,
                       canExportFiles: derived.hasAnyOutputs,
                       canExportScript: derived.hasScript,
-                    onDownloadVoiceover: actions.downloadVoiceover,
-                    canDownloadVoiceover,
-                    onDownloadThumbnail: actions.downloadThumbnail,
-                    canDownloadThumbnail,
+                      onDownloadVoiceover: actions.downloadVoiceover,
+                      canDownloadVoiceover,
+                      onDownloadThumbnail: actions.downloadThumbnail,
+                      canDownloadThumbnail,
                     }}
-                  sessionTotals={{
-                    totalTokens: pipeline.sessionTotalTokens ?? pipeline.totalTokens,
-                    totalCostUsd: pipeline.sessionTotalCostUsd ?? pipeline.totalCostUsd,
-                  }}
+                    sessionTotals={{
+                      totalTokens: pipeline.sessionTotalTokens ?? pipeline.totalTokens,
+                      totalCostUsd: pipeline.sessionTotalCostUsd ?? pipeline.totalCostUsd,
+                    }}
+                    narrationAudioState={{
+                      hasAudioUrl: Boolean(state.scriptAudioUrl),
+                      hasError: Boolean(state.scriptAudioError),
+                    }}
                   />
                 </div>
               </div>
@@ -394,6 +405,12 @@ export function AgentShell({
           actions.setVariable(variable, value);
           setEditingVariable(null);
         }}
+      />
+
+      <StyleSelector
+        isOpen={isStyleSelectorOpen}
+        onSelect={handleStyleSelected}
+        onClose={() => setIsStyleSelectorOpen(false)}
       />
     </div>
   );

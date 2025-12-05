@@ -119,7 +119,7 @@ You will be given the following inputs:
 - All Key Concepts are covered clearly
 - Both quizzes and answers included and correct
 - Script is engaging and clear for kids
-- Length is roughly ~1,600+ words
+- Length is roughly ~1,500+ words
 
 ---
 
@@ -317,6 +317,315 @@ Narration Script:
     promptTemplate: `This is a shell step that triggers ElevenLabs text-to-speech generation client-side once narration audio tags are ready.`,
   },
   {
+    id: 'narrationTimestamps',
+    label: 'Narration Timestamps',
+    defaultModel: DEFAULT_MODEL_ID,
+    inputVars: ['NarrationScript', 'ProductionScript'], // Requires production script to align scene-level timestamps
+    outputVars: ['NarrationTimestamps'],
+    promptTemplate: `This is a shell step that extracts word-level timestamps from the narration audio and aligns them to production script scenes.
+
+**Process:**
+1. Takes the generated narration audio URL as input
+2. Sends audio to fal.ai's Whisper endpoint for transcription
+3. Extracts word-level timestamps (start/end time for each word)
+4. Groups words into segments (sentences)
+5. Aligns each scene's narrationText from the ProductionScript to the audio timestamps using fuzzy text matching
+6. Returns NarrationTimestamps JSON with:
+   - words: Array of {word, start, end}
+   - segments: Array of {text, start, end, words}
+   - totalDurationSec: Total audio duration
+   - sceneTimestamps: Array of {sceneNumber, narrationText, startSec, endSec, confidence} for each aligned scene
+
+**Purpose:**
+These timestamps enable precise audio-video synchronization by:
+- Providing exact start/end times for each production script scene's narration
+- Enabling video clips to match the exact audio duration for each scene
+- Ensuring accurate timing in the final video assembly
+
+This step runs client-side via the /api/audio/timestamps endpoint and automatically aligns scenes after extraction.`,
+  },
+  // ============================================
+  // Video Pipeline Steps
+  // ============================================
+  {
+    id: 'productionScript',
+    label: 'Production Script',
+    defaultModel: DEFAULT_MODEL_ID,
+    inputVars: ['VideoScript', 'Topic', 'KeyConcepts'],
+    outputVars: ['ProductionScript'],
+    // Note: VisualStyle, VisualStyleAtmosphere, VisualStyleOutputExample, and VisualStyleDescriptionGuidelines
+    // are injected at runtime based on pipeline.visualStyleId (see interpolatePrompt)
+    promptTemplate: `You are a production director for PIP Academy, an educational kids YouTube channel. Your task is to break down the video script into a detailed **Production Script** with scenes for video generation.
+
+**Input:**
+- Topic: [Topic]
+- Key Concepts: [KeyConcepts]
+- Video Script: [VideoScript]
+- Visual Style: [VisualStyle]
+
+---
+
+## SEMANTIC-FIRST SCENE BREAKING (MOST IMPORTANT)
+
+Scene breaks should be driven by **WHAT is being said**, not arbitrary word counts. The visual MUST match the narration content at every moment.
+
+**SCENE BREAK DECISION TREE:**
+1. Is the narration switching to a NEW subject/topic? → NEW SCENE with "topic-change" transition
+2. Is the narration showing a NEW example of the same concept? → NEW SCENE with "same-subject" transition
+3. Is the narration continuing to describe the SAME thing? → SAME SCENE (extend if under 10 seconds)
+4. Would a visual change HERE confuse the viewer? → SAME SCENE
+
+**VISUAL-NARRATION ALIGNMENT (CRITICAL):**
+- The visual MUST directly illustrate what's being said at that exact moment
+- If narration says "the moon" → visual shows the moon
+- If narration says "but here on Earth" → visual shows Earth
+- If narration explains "how volcanoes work" → visual shows volcano cross-section
+- DON'T show generic "thinking" or "reaction" shots when specific educational content is being explained
+- Each visualDescription must be a concrete representation of the narrationText content
+
+**Scene Break Triggers (in priority order):**
+1. **Topic shift**: Moving from one concept to another (e.g., "Now let's talk about...")
+2. **Subject change**: Different object, location, or phenomenon being discussed
+3. **Narrative beat**: Question posed, answer revealed, new example introduced
+4. **Natural pause**: End of complete thought, rhetorical pause
+
+**Scene Continuity Triggers (keep same visual):**
+1. **Same subject**: Still talking about the same thing - extend the scene
+2. **Elaboration**: Adding detail to current point ("And another thing about it...")
+3. **Continuation**: "Also...", "Plus...", "And..."
+
+---
+
+## TIMING CONSTRAINTS (WAN 2.2 Video Model)
+
+| Constraint | Value | Rationale |
+|------------|-------|-----------|
+| Min duration | 3 seconds | Shorter clips feel jarring |
+| Target duration | 5-8 seconds | Sweet spot for smooth video |
+| **HARD MAX** | **10 seconds** | WAN 2.2 model limit - NEVER exceed this |
+| Max words/scene | ~25 words | At ~2.5 words/sec kids narration pace |
+
+**If a semantically-coherent segment exceeds 25 words:**
+Split at the most natural sub-point within the explanation, keeping the SAME visual subject but using a different micro-movement. The visual should remain consistent while the narration continues.
+
+---
+
+## SCENE CONTINUITY FOR SMOOTH VIDEO
+
+Group related scenes to avoid jarring visual jumps. Use "transitionHint" to indicate how each scene connects:
+- "same-framing": Identical composition, micro-movement only (DEFAULT - smoothest)
+- "same-subject": Same subject, different angle (smooth)
+- "related-cut": Related visual, different subject (acceptable)
+- "topic-change": New section, viewer expects a cut (use sparingly, 5-8 times max per video)
+
+Use "sceneGroup" to organize scenes:
+- "hook": Opening attention-grabber (scenes 1-3)
+- "definition": Explaining what the topic is
+- "concept-1", "concept-2", "concept-3": Key concept explanations
+- "quiz-1", "quiz-2": Quiz segments
+- "wow-fact": Surprising/exciting information
+- "recap": Summary and review
+- "closing": Ending and call-to-action
+
+---
+
+## VISUAL DESCRIPTION RULES
+
+1. Each scene = ONE visual moment (a "breathing photograph" with subtle motion)
+2. visualDescription must DIRECTLY ILLUSTRATE the narrationText - no generic filler shots
+3. Keep same subject/location for 3-5 consecutive scenes before major visual change
+4. **TEXT HANDLING**: If text should appear on screen, spell out the EXACT text. Video models cannot generate readable text—it must be baked into the seed image. Example: "Diagram labeled 'Full Moon', 'Half Moon', 'Crescent'" NOT "Diagram with labels"
+5. **ONE SUBJECT PER SCENE (CRITICAL FOR FLF2V)**: Each scene must focus on a SINGLE visual subject that can have ONE micro-movement. AVOID:
+   - Split-screen compositions showing multiple unrelated elements
+   - Montages or collages of different objects
+   - Scenes describing multiple simultaneous actions
+   
+   **✅ GOOD**: "Close-up of orange rust spreading across chrome bike handlebar, water droplets catching light"
+   **❌ BAD**: "Split-screen: Left shows rust on bike, right shows cake batter being whisked"
+   
+   If narration mentions multiple examples, use SEPARATE SCENES for each example.
+
+**Global Atmosphere:**
+[VisualStyleAtmosphere]
+
+---
+
+## OUTPUT FORMAT (JSON)
+
+Field names (exact): sceneNumber, narrationText, visualDescription, transitionHint, sceneGroup, estimatedDurationSec
+[VisualStyleOutputExample]
+
+**Visual Description Guidelines:**
+[VisualStyleDescriptionGuidelines]
+
+Output ONLY valid JSON, no commentary.`,
+  },
+  {
+    id: 'characterReferenceImage',
+    label: 'Character Reference Image',
+    defaultModel: DEFAULT_MODEL_ID,
+    inputVars: ['ProductionScript'],
+    outputVars: [],
+    promptTemplate: `This is a shell step that generates a character reference image for visual consistency.
+
+The production script contains a characterSheet with detailed character descriptions. This step extracts the mainChild description and generates a clean, front-facing "hero portrait" of the character.
+
+This reference image will be passed to all subsequent scene image generations to ensure the character looks identical across all scenes.
+
+**Process:**
+1. Extract characterSheet.mainChild from ProductionScript
+2. Generate a clean front-facing portrait using Gemini with the 3D animation style
+3. Store the result as CharacterReferenceImage (base64)
+
+This step runs client-side via the Gemini image generation API.`,
+  },
+  {
+    id: 'sceneImagePrompts',
+    label: 'Scene Image Prompts',
+    defaultModel: DEFAULT_MODEL_ID,
+    inputVars: ['ProductionScript'],
+    outputVars: ['SceneImagePrompts'],
+    // Note: VisualStyleConsolidatedImageGuidance is injected at runtime based on pipeline.visualStyleId
+    promptTemplate: `Convert each scene's visualDescription into two nearly-identical image prompts for WAN 2.2 FLF2V animation.
+
+**Production Script (scenes to process):**
+[ProductionScript]
+
+[VisualStyleConsolidatedImageGuidance]
+
+## YOUR TASK
+
+For each scene, output:
+- **sceneNumber**: Match the scene number from input
+- **firstFramePrompt**: Complete scene description (25-40 words) - subject, pose, environment, lighting, camera
+- **lastFramePrompt**: IDENTICAL to firstFramePrompt except for ONE micro-movement change explicitly stated
+- **microMovement**: Label for what changes (from the table above)
+
+## RULES
+1. **VISUAL MUST MATCH NARRATION**: The image prompt must illustrate what the narrationText is describing
+2. **90% identical prompts**: Camera, lighting, environment, pose must be identical - only the micro-movement differs
+3. **Explicit change**: State what changes in lastFramePrompt (e.g., "eyes now glancing left" not just "looks curious")
+4. **Text handling**: If text needed, include EXACT text in BOTH prompts identically
+5. **Kid-safe**: Educational, friendly, no scary content
+
+Output ONLY a valid JSON array, no commentary.`,
+  },
+  {
+    id: 'sceneImages',
+    label: 'Generate Scene Images',
+    defaultModel: DEFAULT_MODEL_ID,
+    inputVars: ['SceneImagePrompts'],
+    outputVars: [],
+    promptTemplate: `This is a shell step that triggers batch image generation client-side for WAN 2.2 FLF2V support.
+
+For each scene, TWO images are generated:
+1. **First Frame**: The starting pose/state (from firstFramePrompt)
+2. **Last Frame**: The end state after micro-movement (from lastFramePrompt)
+
+Both images are sent to Gemini with the character reference image to ensure visual consistency. The first frame is stored as imageUrl and the last frame as lastFrameImageUrl in the scene assets.
+
+This dual-frame approach enables WAN 2.2's FLF2V (First-Last-Frame-to-Video) feature for smoother video transitions.`,
+  },
+  {
+    id: 'sceneVideoPrompts',
+    label: 'Scene Video Prompts',
+    defaultModel: DEFAULT_MODEL_ID,
+    inputVars: ['SceneImagePrompts'],
+    outputVars: ['SceneVideoPrompts'],
+    // Note: VisualStyleConsolidatedVideoGuidance is injected at runtime based on pipeline.visualStyleId
+    promptTemplate: `Generate video motion prompts for WAN 2.2 FLF2V animation.
+
+## INPUT DATA
+[SceneImagePrompts]
+
+[VisualStyleConsolidatedVideoGuidance]
+
+## INSTRUCTIONS
+
+For each scene in the input, create a video prompt that animates the micro-movement between the first and last frame.
+
+**Output JSON array with these fields:**
+- sceneNumber: Copy from input
+- videoPrompt: Motion description under 40 words
+- suggestedDurationSec: 5-10 (max 10)
+- microMovementAnimated: **COPY the "microMovement" field from the input scene EXACTLY AS-IS**
+
+## MICROMOVEMENT FIELD COPYING RULE
+
+The "microMovementAnimated" output field must contain the EXACT SAME STRING as the "microMovement" input field for that scene.
+
+**This is a LITERAL COPY operation, not interpretation:**
+
+| Input microMovement | Output microMovementAnimated |
+|---------------------|------------------------------|
+| "shadow_shift" | "shadow_shift" ← COPY THIS EXACT STRING |
+| "steam_drift" | "steam_drift" ← COPY THIS EXACT STRING |
+| "particle_drift" | "particle_drift" ← COPY THIS EXACT STRING |
+
+**DO NOT:**
+- Invent new labels (NO "rust_spread", "bubble_rise", "liquid_swirl")
+- Describe what you see (NO "bubbles_rising_through_liquid")
+- Combine or modify (NO "shadow_and_light_shift")
+
+**DO:**
+- Copy the microMovement string character-for-character
+
+## VIDEO PROMPT CONTENT
+
+The videoPrompt should describe the motion implied by the microMovement label:
+- shadow_shift → describe shadows moving
+- steam_drift → describe steam drifting  
+- particle_drift → describe particles drifting
+- water_ripple → describe water rippling
+
+Add 1-2 ambient details. End with camera instruction (usually "Static camera.").
+
+## OUTPUT EXAMPLE
+
+Input: \`{"sceneNumber": 1, "microMovement": "shadow_shift", ...}\`
+
+Output:
+\`\`\`json
+{
+  "sceneNumber": 1,
+  "videoPrompt": "Shadows shift slowly across the metal surface. Ambient light holds steady. Dust motes drift gently. Static camera.",
+  "suggestedDurationSec": 7,
+  "microMovementAnimated": "shadow_shift"
+}
+\`\`\`
+
+↑ Note: microMovementAnimated = "shadow_shift" because input microMovement = "shadow_shift"
+
+Output ONLY valid JSON array.`,
+  },
+  {
+    id: 'sceneVideos',
+    label: 'Generate Scene Videos',
+    defaultModel: DEFAULT_MODEL_ID,
+    inputVars: ['SceneVideoPrompts'],
+    outputVars: [],
+    promptTemplate: `This is a shell step that triggers batch video generation client-side using fal.ai WAN 2.2 FLF2V model.
+
+For each scene, the following is sent to WAN 2.2:
+- **image_url**: First frame image (starting pose)
+- **end_image_url**: Last frame image (end state after micro-movement)
+- **prompt**: Motion prompt describing the animation
+
+The FLF2V (First-Last-Frame-to-Video) approach provides the model with clear start and end states to interpolate between, resulting in smoother and more controlled video generation.`,
+  },
+  {
+    id: 'videoAssembly',
+    label: 'Assemble Final Video',
+    defaultModel: DEFAULT_MODEL_ID,
+    inputVars: [],
+    outputVars: [],
+    promptTemplate: `This is a shell step that triggers FFmpeg video assembly client-side. It will:
+1. Trim each video clip to match the corresponding audio segment duration
+2. Concatenate all clips in sequence
+3. Mix in the narration audio track
+4. Output the final 1080p MP4 video`,
+  },
+  {
     id: 'titleDescription',
     label: 'Title & Description',
     defaultModel: DEFAULT_MODEL_ID,
@@ -377,6 +686,30 @@ Here are the key concepts
     promptTemplate: `This is a shell step that triggers Gemini image generation client-side once the thumbnail prompt is ready.`,
   },
 ];
+
+/**
+ * Steps that trigger client-side workflows (Gemini image gen, ElevenLabs TTS, fal.ai, FFmpeg, etc.)
+ * instead of calling the backend LLM runner. These should never be invoked via /api/agent/run-step.
+ */
+export const CLIENT_SHELL_STEP_IDS: StepId[] = [
+  'narrationAudio',
+  'narrationTimestamps',
+  'characterReferenceImage',
+  'sceneImages',
+  'sceneVideos',
+  'videoAssembly',
+  'thumbnailGenerate',
+];
+
+const CLIENT_SHELL_STEP_ID_SET = new Set<StepId>(CLIENT_SHELL_STEP_IDS);
+
+export function isClientShellStep(stepId: StepId): boolean {
+  return CLIENT_SHELL_STEP_ID_SET.has(stepId);
+}
+
+export const SERVER_EXECUTABLE_STEP_IDS: StepId[] = STEP_CONFIGS.map((config) => config.id).filter(
+  (stepId) => !isClientShellStep(stepId),
+);
 
 const STEP_CONFIG_MAP: Record<StepId, StepConfig> = STEP_CONFIGS.reduce(
   (acc, config) => {

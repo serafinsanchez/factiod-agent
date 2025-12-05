@@ -11,6 +11,8 @@ import { ChevronDown, X } from "lucide-react";
 import {
   VARIABLE_KEY_TO_PIPELINE_FIELD,
   VARIABLE_LABELS,
+  hasVariableValue,
+  getVariableDisplayValue,
 } from "@/lib/agent/variable-metadata";
 import { ensureChecklistWordCount, extractChecklist } from "@/lib/agent/checklist";
 import { cn } from "@/lib/utils";
@@ -40,6 +42,7 @@ interface StepEditorProps {
   stepConfig: StepConfig;
   stepState: StepRunState;
   sharedVars: SharedVars;
+  pipeline: PipelineState;
   templateValue: string;
   onRunStep: (stepId: StepId) => void;
   onPromptChange: (stepId: StepId, newTemplate: string) => void;
@@ -52,6 +55,7 @@ export function StepEditor({
   stepConfig,
   stepState,
   sharedVars,
+  pipeline,
   templateValue,
   onRunStep,
   onPromptChange,
@@ -79,13 +83,35 @@ export function StepEditor({
   const isScriptStep = stepConfig.id === "script";
   const isNarrationCleanStep = stepConfig.id === "narrationClean";
   const isNarrationAudioTagsStep = stepConfig.id === "narrationAudioTags";
+  const isNarrationTimestampsStep = stepConfig.id === "narrationTimestamps";
   const isNarrationStep = isNarrationCleanStep || isNarrationAudioTagsStep;
+  
+  // Format narrationTimestamps step to show only scene-level timestamps
+  const formattedResponseText = useMemo(() => {
+    if (!isNarrationTimestampsStep || stepState.status === "running" || stepState.status === "error") {
+      return null; // Use default handling
+    }
+    if (!stepState.responseText) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(stepState.responseText);
+      if (parsed.sceneTimestamps && Array.isArray(parsed.sceneTimestamps)) {
+        // Return only the sceneTimestamps array, formatted nicely
+        return JSON.stringify(parsed.sceneTimestamps, null, 2);
+      }
+    } catch {
+      // If parsing fails, fall back to original responseText
+    }
+    return null;
+  }, [isNarrationTimestampsStep, stepState.status, stepState.responseText]);
+  
   const resolvedOutputText =
     stepState.status === "running"
       ? "Running…"
       : stepState.status === "error"
         ? stepState.errorMessage ?? "Step failed."
-        : stepState.responseText || "Awaiting run…";
+        : formattedResponseText ?? stepState.responseText ?? "Awaiting run…";
   const finalScriptWordCount = finalScriptStats?.words ?? null;
 
   const qaChecklistText = useMemo(() => {
@@ -146,12 +172,7 @@ export function StepEditor({
     isScriptStep || isNarrationStep ? "Copy script" : "Copy text";
 
   const missingVars = stepConfig.inputVars.filter((variable) => {
-    const sharedKey = VARIABLE_KEY_TO_PIPELINE_FIELD[variable] as keyof SharedVars | undefined;
-    if (!sharedKey) {
-      return false;
-    }
-    const value = sharedVars[sharedKey];
-    return typeof value !== "string" || value.trim().length === 0;
+    return !hasVariableValue(pipeline, variable);
   });
 
   const topicMissing =
@@ -231,19 +252,22 @@ export function StepEditor({
             </span>
           ) : (
             stepConfig.inputVars.map((variable) => {
+              // For string variables, get the actual value from sharedVars for preview
               const sharedKey = VARIABLE_KEY_TO_PIPELINE_FIELD[variable] as keyof SharedVars | undefined;
-              const value = sharedKey ? sharedVars[sharedKey] : undefined;
+              const stringValue = sharedKey ? sharedVars[sharedKey] : undefined;
+              // For JSON variables, get display value
+              const displayValue = stringValue ?? getVariableDisplayValue(pipeline, variable);
               const label = VARIABLE_LABELS[variable] ?? variable;
               const preview =
-                typeof value === "string" && value.trim().length > 0
-                  ? value.trim().slice(0, 120) +
-                    (value.trim().length > 120 ? "…" : "")
+                typeof displayValue === "string" && displayValue.trim().length > 0
+                  ? displayValue.trim().slice(0, 120) +
+                    (displayValue.trim().length > 120 ? "…" : "")
                   : "No value yet";
               return (
                 <VariableStatusBadge
                   key={variable}
                   name={label}
-                  value={typeof value === "string" ? value : undefined}
+                  value={displayValue}
                   title={preview}
                   onClick={onEditVariable ? () => onEditVariable(variable) : undefined}
                 />

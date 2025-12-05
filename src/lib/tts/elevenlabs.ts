@@ -1,15 +1,31 @@
-const ELEVENLABS_BASE_URL = 'https://api.elevenlabs.io/v1';
+import { fal } from '@fal-ai/client';
 
-const API_KEY = process.env.ELEVENLABS_API_KEY!;
+const FAL_KEY = process.env.FAL_KEY!;
 const DEFAULT_VOICE_ID = process.env.ELEVENLABS_VOICE_ID!;
 const DEFAULT_MODEL_ID = process.env.ELEVENLABS_MODEL_ID ?? 'eleven_v3';
+
+// Voice to use for multilingual_v2 model (can be a preset name like "Daniel" or a voice ID)
+// Set ELEVENLABS_MULTILINGUAL_V2_VOICE in .env.local to override the default
+const MULTILINGUAL_V2_VOICE = process.env.ELEVENLABS_MULTILINGUAL_V2_VOICE ?? 'Daniel';
+
 export const ELEVEN_V3_MAX_CHARS = 5000;
 export const ELEVEN_V3_SAFE_CHARS = 3800;
 export const ELEVEN_MULTILINGUAL_V2_MAX_CHARS = 10000;
 
-if (!API_KEY) {
-  console.warn('ELEVENLABS_API_KEY is not set. TTS will fail.');
+if (!FAL_KEY) {
+  console.warn('FAL_KEY is not set. TTS will fail.');
 }
+
+// Configure fal client with credentials
+fal.config({
+  credentials: FAL_KEY,
+});
+
+// Map model IDs to fal.ai endpoints
+const MODEL_TO_ENDPOINT: Record<string, string> = {
+  eleven_v3: 'fal-ai/elevenlabs/tts/eleven-v3',
+  eleven_multilingual_v2: 'fal-ai/elevenlabs/tts/multilingual-v2',
+};
 
 export interface TtsOptions {
   voiceId?: string;
@@ -18,48 +34,90 @@ export interface TtsOptions {
   similarityBoost?: number;
 }
 
+interface FalTtsResult {
+  data: {
+    audio: {
+      url: string;
+      content_type?: string;
+      file_name?: string;
+      file_size?: number;
+    };
+  };
+  requestId: string;
+}
+
+// Known preset voice NAMES that work with fal.ai ElevenLabs endpoints
+const PRESET_VOICE_NAMES = new Set([
+  'rachel', 'domi', 'bella', 'antoni', 'elli', 'josh', 'arnold', 'adam',
+  'sam', 'nicole', 'glinda', 'clyde', 'james', 'aria', 'matilda', 'liam',
+  'charlotte', 'emily', 'daniel', 'sarah', 'brian', 'george', 'grace',
+  'lily', 'dave', 'freya', 'gigi', 'harry', 'alice', 'dorothy', 'drew',
+  'jessica', 'michael', 'mimi', 'chris', 'paul', 'serena', 'thomas', 'laura',
+]);
+
+
+/**
+ * Check if a voice string is a known preset name (case-insensitive).
+ * Returns false if it looks like a voice ID (typically 21-char alphanumeric strings).
+ */
+function isPresetVoiceName(voice: string): boolean {
+  return PRESET_VOICE_NAMES.has(voice.toLowerCase());
+}
+
 export async function generateTtsAudio(
   text: string,
   options: TtsOptions = {},
 ): Promise<Buffer> {
-  if (!API_KEY) {
-    throw new Error('ELEVENLABS_API_KEY is not set.');
+  if (!FAL_KEY) {
+    throw new Error('FAL_KEY is not set.');
   }
 
-  const voiceId = options.voiceId ?? DEFAULT_VOICE_ID;
   const modelId = options.modelId ?? DEFAULT_MODEL_ID;
+  let voice = options.voiceId ?? DEFAULT_VOICE_ID;
 
-  if (!voiceId) {
+  if (!voice) {
     throw new Error('No ElevenLabs voice ID configured.');
   }
 
-  const url = `${ELEVENLABS_BASE_URL}/text-to-speech/${voiceId}`;
+  // For multilingual_v2, custom voice IDs may not work correctly and can produce silent audio.
+  // If the voice is not a known preset name, fall back to ELEVENLABS_MULTILINGUAL_V2_VOICE.
+  if (modelId === 'eleven_multilingual_v2' && !isPresetVoiceName(voice)) {
+    console.warn(
+      `[TTS] Voice "${voice}" is not a known preset voice name. ` +
+      `Custom voice IDs may produce silent audio with eleven_multilingual_v2. ` +
+      `Using fallback voice "${MULTILINGUAL_V2_VOICE}" instead.`
+    );
+    voice = MULTILINGUAL_V2_VOICE;
+  }
 
-  const body = {
-    text,
-    model_id: modelId,
-    voice_settings: {
+  const endpoint = MODEL_TO_ENDPOINT[modelId];
+  if (!endpoint) {
+    throw new Error(`Unknown model ID: ${modelId}. Supported: ${Object.keys(MODEL_TO_ENDPOINT).join(', ')}`);
+  }
+
+  console.log(`[TTS] Calling fal.ai endpoint: ${endpoint} with voice: ${voice}`);
+
+  const result = (await fal.subscribe(endpoint, {
+    input: {
+      text,
+      voice,
       stability: options.stability ?? 0.5,
-      similarity_boost: options.similarityBoost ?? 0.7,
+      similarity_boost: options.similarityBoost ?? 0.75,
     },
-  };
+  })) as FalTtsResult;
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'xi-api-key': API_KEY,
-      'Content-Type': 'application/json',
-      Accept: 'audio/mpeg',
-    },
-    body: JSON.stringify(body),
-  });
+  // Download the audio from the returned URL
+  const audioUrl = result.data.audio.url;
+  console.log(`[TTS] Downloading audio from: ${audioUrl}`);
+  const res = await fetch(audioUrl);
 
   if (!res.ok) {
-    const msg = await res.text().catch(() => '');
-    throw new Error(`ElevenLabs TTS error: ${res.status} ${res.statusText} ${msg}`);
+    throw new Error(`Failed to download audio from fal.ai: ${res.status} ${res.statusText}`);
   }
 
   const arrayBuffer = await res.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  const buffer = Buffer.from(arrayBuffer);
+  console.log(`[TTS] Downloaded audio buffer size: ${buffer.length} bytes`);
+  
+  return buffer;
 }
-

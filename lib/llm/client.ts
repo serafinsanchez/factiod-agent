@@ -107,6 +107,7 @@ function normalizeAnthropicContent(content?: AnthropicContentBlock[]): string {
 async function callMoonshotAPI(
   model: string,
   prompt: string,
+  maxTokens?: number,
 ): Promise<{ text: string; usage: Usage }> {
   const apiKey = process.env.MOONSHOT_API_KEY;
   if (!apiKey) {
@@ -133,7 +134,7 @@ async function callMoonshotAPI(
           },
         ],
         temperature: 0.4,
-        max_tokens: 8192, // Increased for longer outputs like video scripts
+        max_tokens: maxTokens ?? 8192, // Default 8192, can be increased to 16384 for long outputs
         stream: false,
         // Note: Kimi K2 returns both reasoning_content and content fields
         // We extract only content field below to get final answer
@@ -172,12 +173,17 @@ async function callMoonshotAPI(
   }
 }
 
-async function callOpenAI(model: string, prompt: string): Promise<{ text: string; usage: Usage }> {
+async function callOpenAI(
+  model: string,
+  prompt: string,
+  maxTokens?: number,
+): Promise<{ text: string; usage: Usage }> {
   try {
     const client = getOpenAIClient();
 
     const response = await client.chat.completions.create({
       model,
+      max_tokens: maxTokens ?? 4096,
       messages: [
         {
           role: 'user',
@@ -202,7 +208,7 @@ async function callOpenAI(model: string, prompt: string): Promise<{ text: string
   }
 }
 
-async function callAnthropic(model: string, prompt: string): Promise<{ text: string; usage: Usage }> {
+async function callAnthropic(model: string, prompt: string, maxTokens?: number): Promise<{ text: string; usage: Usage }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error('Missing ANTHROPIC_API_KEY environment variable.');
@@ -218,7 +224,7 @@ async function callAnthropic(model: string, prompt: string): Promise<{ text: str
       },
       body: JSON.stringify({
         model,
-        max_tokens: 4096,
+        max_tokens: maxTokens ?? 4096,
         system: SAFETY_SYSTEM_PROMPT,
         messages: [
           {
@@ -258,18 +264,18 @@ async function callAnthropic(model: string, prompt: string): Promise<{ text: str
   }
 }
 
-export async function callModel(model: ModelId, prompt: string): Promise<CallModelResult> {
+export async function callModel(model: ModelId, prompt: string, maxTokens?: number): Promise<CallModelResult> {
   const modelName = MODEL_NAME_BY_ID[model];
 
   if (model === 'kimik2-thinking') {
-    return callMoonshotAPI(modelName, prompt);
+    return callMoonshotAPI(modelName, prompt, maxTokens);
   }
 
   if (model === 'claude-sonnet-4.5') {
-    return callAnthropic(modelName, prompt);
+    return callAnthropic(modelName, prompt, maxTokens);
   }
 
-  return callOpenAI(modelName, prompt);
+  return callOpenAI(modelName, prompt, maxTokens);
 }
 
 

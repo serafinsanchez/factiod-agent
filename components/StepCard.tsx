@@ -43,7 +43,12 @@ interface StepCardProps {
   onResetPrompt: (stepId: StepId) => void;
 }
 
-const VARIABLE_MAP: Record<VariableKey, keyof SharedVars> = {
+/**
+ * Maps VariableKeys to SharedVars fields.
+ * Note: ProductionScript, SceneImagePrompts, SceneVideoPrompts are JSON outputs
+ * stored as structured data, not simple string fields.
+ */
+const VARIABLE_MAP: Partial<Record<VariableKey, keyof SharedVars>> = {
   Topic: "topic",
   KeyConcepts: "keyConcepts",
   HookScript: "hookScript",
@@ -53,6 +58,7 @@ const VARIABLE_MAP: Record<VariableKey, keyof SharedVars> = {
   Title: "title",
   Description: "description",
   ThumbnailPrompt: "thumbnailPrompt",
+  // ProductionScript, SceneImagePrompts, SceneVideoPrompts are not in SharedVars
 };
 
 export default function StepCard({
@@ -133,17 +139,23 @@ export default function StepCard({
           ) : (
             stepConfig.inputVars.map((variable) => {
               const sharedKey = VARIABLE_MAP[variable];
-              const value = sharedVars[sharedKey];
+              // For JSON variables (ProductionScript, etc.) that aren't in SharedVars,
+              // we show them as available (they're handled separately)
+              const value = sharedKey ? sharedVars[sharedKey] : undefined;
               const hasValue =
                 typeof value === "string" && value.trim().length > 0;
+              // Consider JSON variables as "special" - show different styling
+              const isJsonVariable = !sharedKey;
               return (
                 <span
                   key={variable}
                   className={cn(
                     "rounded-xl border px-3 py-1",
-                    hasValue
-                      ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
-                      : "border-zinc-800/80 bg-zinc-900/60 text-zinc-500",
+                    isJsonVariable
+                      ? "border-sky-500/50 bg-sky-500/10 text-sky-200"
+                      : hasValue
+                        ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
+                        : "border-zinc-800/80 bg-zinc-900/60 text-zinc-500",
                   )}
                 >
                   {variable}

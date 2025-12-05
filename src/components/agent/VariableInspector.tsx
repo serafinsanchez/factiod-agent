@@ -8,6 +8,8 @@ import type { PipelineState, VariableKey } from "@/types/agent";
 import {
   VARIABLE_DEFINITIONS,
   VARIABLE_KEY_TO_PIPELINE_FIELD,
+  hasVariableValue,
+  getVariableDisplayValue,
 } from "@/lib/agent/variable-metadata";
 import { cn } from "@/lib/utils";
 
@@ -27,9 +29,7 @@ export function VariableInspector({
   const readyCount = useMemo(() => {
     return VARIABLE_DEFINITIONS.reduce(
       (count, def) => {
-        const field = VARIABLE_KEY_TO_PIPELINE_FIELD[def.key];
-        const value = pipeline[field];
-        if (typeof value === "string" && value.trim().length > 0) {
+        if (hasVariableValue(pipeline, def.key)) {
           return count + 1;
         }
         return count;
@@ -70,10 +70,13 @@ export function VariableInspector({
       {isExpanded && (
         <div className="mt-5 space-y-4">
           {VARIABLE_DEFINITIONS.map((definition) => {
+            // Get display value (handles both string and JSON variables)
+            const displayValue = getVariableDisplayValue(pipeline, definition.key);
+            // For string variables, get the full value for snippet display
             const field = VARIABLE_KEY_TO_PIPELINE_FIELD[definition.key];
-            const rawValue = pipeline[field];
-            const value = typeof rawValue === "string" ? rawValue : "";
-            const trimmed = value.trim();
+            const stringValue = field ? pipeline[field] : undefined;
+            const fullValue = typeof stringValue === "string" ? stringValue : displayValue ?? "";
+            const trimmed = fullValue.trim();
             const snippet =
               trimmed.length > 0
                 ? trimmed.length > 260
@@ -97,7 +100,7 @@ export function VariableInspector({
                   <div className="flex flex-wrap gap-2">
                     <VariableStatusBadge
                       name={definition.label}
-                      value={value}
+                      value={displayValue}
                       size="md"
                       title={trimmed || "No value yet"}
                       onClick={undefined}

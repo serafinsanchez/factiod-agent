@@ -1,6 +1,12 @@
 export type ModelId = 'claude-sonnet-4.5' | 'gpt-5.1-2025-11-13' | 'kimik2-thinking';
 export type NarrationModelId = 'eleven_v3' | 'eleven_multilingual_v2';
 
+/**
+ * Visual style for video generation.
+ * Each style has different prompt templates and visual characteristics.
+ */
+export type VisualStyleId = 'pixar-3d' | 'paper-craft' | 'documentary';
+
 export type StepId =
   | 'keyConcepts'
   | 'hook'
@@ -10,6 +16,14 @@ export type StepId =
   | 'narrationClean'
   | 'narrationAudioTags'
   | 'narrationAudio'
+  | 'narrationTimestamps'
+  | 'productionScript'
+  | 'characterReferenceImage'
+  | 'sceneImagePrompts'
+  | 'sceneImages'
+  | 'sceneVideoPrompts'
+  | 'sceneVideos'
+  | 'videoAssembly'
   | 'titleDescription'
   | 'thumbnail'
   | 'thumbnailGenerate';
@@ -21,6 +35,11 @@ export type VariableKey =
   | 'QuizInfo'
   | 'VideoScript'
   | 'NarrationScript'
+  | 'NarrationTimestamps'
+  | 'ProductionScript'
+  | 'CharacterReferenceImage'
+  | 'SceneImagePrompts'
+  | 'SceneVideoPrompts'
   | 'Title'
   | 'Description'
   | 'ThumbnailPrompt';
@@ -82,6 +101,25 @@ export interface PipelineState {
   scriptPath?: string;
   audioPath?: string;
   thumbnailPath?: string;
+  
+  // Audio timestamps for audio-video sync
+  narrationTimestamps?: NarrationTimestampsData;
+  
+  // Video pipeline fields
+  /** Visual style for video generation (affects prompts, character usage, etc.) */
+  visualStyleId?: VisualStyleId;
+  productionScript?: ProductionScriptData;
+  /** Base64-encoded character reference image for visual consistency across scenes */
+  characterReferenceImage?: string;
+  sceneAssets?: SceneAsset[];
+  finalVideoPath?: string;
+  videoAssemblyStatus?: 'idle' | 'assembling' | 'complete' | 'error';
+  /**
+   * Optional limiter for Stage 3 so users can preview only the first N scenes
+   * before committing to full image/video generation. When null/undefined we
+   * run the entire scene list.
+   */
+  scenePreviewLimit?: number | null;
 }
 
 export interface HistoryProject {
@@ -91,5 +129,154 @@ export interface HistoryProject {
   projectSlug?: string | null;
   model: ModelId;
   createdAt?: string | null;
+}
+
+// ============================================
+// Audio Timestamps Types
+// ============================================
+
+/**
+ * A single word with its timing in the narration audio.
+ */
+export interface WordTimestamp {
+  word: string;
+  /** Start time in seconds */
+  start: number;
+  /** End time in seconds */
+  end: number;
+}
+
+/**
+ * A segment of narration (typically a sentence) with word-level timestamps.
+ */
+export interface NarrationSegment {
+  text: string;
+  /** Start time in seconds */
+  start: number;
+  /** End time in seconds */
+  end: number;
+  words: WordTimestamp[];
+}
+
+/**
+ * Scene-level timestamp alignment result.
+ */
+export interface SceneTimestamp {
+  sceneNumber: number;
+  narrationText: string;
+  startSec: number;
+  endSec: number;
+  confidence: number;
+  /** Calculated WAN 2.2 num_frames (clamped 17-161) */
+  numFrames: number;
+}
+
+/**
+ * Complete narration timestamps data extracted from audio via Whisper.
+ */
+export interface NarrationTimestampsData {
+  /** All words with their individual timestamps */
+  words: WordTimestamp[];
+  /** Segments (sentences) with word-level breakdown */
+  segments: NarrationSegment[];
+  /** Total duration of the audio in seconds */
+  totalDurationSec: number;
+  /** Scene-level timestamps aligned to production script scenes (if available) */
+  sceneTimestamps?: SceneTimestamp[];
+}
+
+// ============================================
+// Video Pipeline Types
+// ============================================
+
+/**
+ * A single scene in the production script.
+ * Each scene corresponds to one video clip (5-10 seconds).
+ */
+export interface ProductionScene {
+  sceneNumber: number;
+  narrationText: string;
+  visualDescription: string;
+  /** Estimated duration if timestamps are not available */
+  estimatedDurationSec: number;
+  /** Precise start time from audio timestamps (if available) */
+  startSec?: number;
+  /** Precise end time from audio timestamps (if available) */
+  endSec?: number;
+  /** Hint for how this scene transitions to the next */
+  transitionHint?: "same-framing" | "same-subject" | "related-cut" | "topic-change";
+  /** Group this scene belongs to for organization */
+  sceneGroup?: string;
+}
+
+/**
+ * Assets generated for a single scene.
+ * Supports FLF2V (First-Last-Frame-to-Video) with separate first and last frame images.
+ */
+export interface SceneAsset {
+  sceneNumber: number;
+  /** Image generation prompt for the first frame (starting pose) */
+  imagePrompt?: string;
+  /** URL of the generated first frame image */
+  imageUrl?: string;
+  /** Image generation prompt for the last frame (end state after micro-movement) */
+  lastFrameImagePrompt?: string;
+  /** URL of the generated last frame image for FLF2V */
+  lastFrameImageUrl?: string;
+  videoPrompt?: string;
+  videoUrl?: string;
+  audioDurationSec?: number;
+  /** Target duration in seconds calculated from audio timestamps (for debugging/display) */
+  targetDurationSec?: number;
+  /** Number of frames used for video generation (calculated from targetDurationSec) */
+  generatedNumFrames?: number;
+  /** Precise audio start time in seconds from narration timestamps (for assembly sync) */
+  audioStartSec?: number;
+  /** Precise audio end time in seconds from narration timestamps (for assembly sync) */
+  audioEndSec?: number;
+  status: 'pending' | 'generating' | 'complete' | 'error';
+  errorMessage?: string;
+}
+
+/**
+ * Character sheet for visual consistency.
+ */
+export interface CharacterSheet {
+  mainChild: string;
+}
+
+/**
+ * Full production script with all scenes.
+ */
+export interface ProductionScriptData {
+  globalAtmosphere: string;
+  characterSheet?: CharacterSheet;
+  scenes: ProductionScene[];
+  totalEstimatedDurationSec: number;
+}
+
+/**
+ * Video assembly manifest for FFmpeg.
+ */
+export interface VideoAssemblyManifest {
+  clips: Array<{
+    clipNumber: number;
+    videoUrl: string;
+    audioStartSec: number;
+    audioEndSec: number;
+  }>;
+  audioUrl: string;
+  outputPath: string;
+  /**
+   * Optional: Start offset for audio extraction (in seconds).
+   * When provided, only the portion of audio from audioStartOffset to audioEndOffset
+   * will be used. This ensures perfect sync for partial video assembly.
+   */
+  audioStartOffset?: number;
+  /**
+   * Optional: End offset for audio extraction (in seconds).
+   * When provided along with audioStartOffset, the audio will be trimmed to this range.
+   */
+  audioEndOffset?: number;
 }
 

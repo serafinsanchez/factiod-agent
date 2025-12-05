@@ -1,6 +1,6 @@
 import type { StepId } from "@/types/agent";
 
-export type StageId = "plan" | "script" | "publish";
+export type StageId = "plan" | "script" | "video" | "publish";
 
 export interface StageDefinition {
   id: StageId;
@@ -20,8 +20,24 @@ export const STAGES: StageDefinition[] = [
     id: "script",
     label: "Script & Narration",
     description:
-      "Generate the script, run QA, clean narration, add audio tags, and then render the ElevenLabs voiceover.",
+      "Generate the script, run QA, clean narration, add audio tags, and render the ElevenLabs voiceover.",
     steps: ["script", "scriptQA", "narrationClean", "narrationAudioTags", "narrationAudio"],
+  },
+  {
+    id: "video",
+    label: "Video Generation",
+    description:
+      "Create production script, extract narration timestamps aligned to scenes, generate scene images and video clips, then assemble the final video.",
+    steps: [
+      "productionScript",
+      "narrationTimestamps",
+      "characterReferenceImage",
+      "sceneImagePrompts",
+      "sceneImages",
+      "sceneVideoPrompts",
+      "sceneVideos",
+      "videoAssembly",
+    ],
   },
   {
     id: "publish",
