@@ -65,13 +65,6 @@ export default function HomePage() {
               Your Factoid Videos
             </h1>
           </div>
-          <Button
-            size="lg"
-            className="rounded-full bg-white px-6 text-sm font-semibold uppercase tracking-[0.2em] text-zinc-900 hover:bg-zinc-200"
-            onClick={handleNewProject}
-          >
-            New Project
-          </Button>
         </div>
 
         <Card className="border border-zinc-900/70 bg-zinc-950/80">
