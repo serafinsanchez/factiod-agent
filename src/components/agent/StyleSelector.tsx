@@ -142,13 +142,6 @@ export function StyleSelector({ isOpen, onSelect, onClose }: StyleSelectorProps)
     return () => window.removeEventListener("keydown", handler);
   }, [isOpen, onClose]);
 
-  // Reset to default when opening
-  useEffect(() => {
-    if (isOpen) {
-      setSelectedStyle(DEFAULT_VISUAL_STYLE_ID);
-    }
-  }, [isOpen]);
-
   if (!isBrowser || !isOpen) {
     return null;
   }

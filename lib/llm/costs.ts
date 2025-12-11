@@ -23,6 +23,10 @@ export const PRICES: Record<ModelId, TokenPricing> = {
     input: 3.0, // USD per 1M input tokens
     output: 15.0, // USD per 1M output tokens
   },
+  'claude-opus-4.5': {
+    input: 15.0, // USD per 1M input tokens
+    output: 75.0, // USD per 1M output tokens
+  },
   'gemini-3-pro': {
     input: 2.0, // USD per 1M input tokens
     output: 12.0, // USD per 1M output tokens

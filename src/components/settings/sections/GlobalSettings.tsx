@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { SettingsForm } from "../SettingsForm";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,39 +9,47 @@ import type { GlobalSettings as GlobalSettingsType } from "@/lib/settings/types"
 
 export function GlobalSettings() {
   const { data, isLoading, isSaving, save, reset } = useSettings("global");
-  const [localSettings, setLocalSettings] = useState<GlobalSettingsType | null>(null);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [draft, setDraft] = useState<Partial<GlobalSettingsType>>({});
 
-  useEffect(() => {
-    if (data) {
-      setLocalSettings(data);
-      setHasChanges(false);
+  const settings = useMemo(() => {
+    if (!data) {
+      return null;
     }
-  }, [data]);
+    return { ...data, ...draft } as GlobalSettingsType;
+  }, [data, draft]);
+
+  const hasChanges = useMemo(() => {
+    if (!data) {
+      return false;
+    }
+
+    return (Object.keys(draft) as Array<keyof GlobalSettingsType>).some((key) => {
+      const value = draft[key];
+      return value !== undefined && value !== data[key];
+    });
+  }, [data, draft]);
 
   const updateField = <K extends keyof GlobalSettingsType>(
     field: K,
     value: GlobalSettingsType[K]
   ) => {
-    if (localSettings) {
-      setLocalSettings({ ...localSettings, [field]: value });
-      setHasChanges(true);
-    }
+    setDraft((current) => ({ ...current, [field]: value }));
   };
 
   const handleSave = async () => {
-    if (localSettings) {
-      await save(localSettings);
-      setHasChanges(false);
+    if (!data) {
+      return;
     }
+    await save({ ...data, ...draft } as GlobalSettingsType);
+    setDraft({});
   };
 
   const handleReset = () => {
     reset();
-    setHasChanges(false);
+    setDraft({});
   };
 
-  if (isLoading || !localSettings) {
+  if (isLoading || !settings) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-zinc-400">Loading settings...</div>
@@ -118,7 +126,7 @@ export function GlobalSettings() {
           <Label htmlFor="defaultProjectCreator">Default Project Creator</Label>
           <Input
             id="defaultProjectCreator"
-            value={localSettings.defaultProjectCreator}
+            value={settings.defaultProjectCreator}
             onChange={(e) => updateField("defaultProjectCreator", e.target.value)}
             placeholder="Your name or team name"
           />
@@ -137,7 +145,7 @@ export function GlobalSettings() {
             <input
               type="checkbox"
               id="autoSaveDrafts"
-              checked={localSettings.autoSaveDrafts}
+              checked={settings.autoSaveDrafts}
               onChange={(e) => updateField("autoSaveDrafts", e.target.checked)}
               className="w-4 h-4 rounded bg-zinc-800 border-zinc-700"
             />
@@ -150,7 +158,7 @@ export function GlobalSettings() {
             <input
               type="checkbox"
               id="costTrackingDisplay"
-              checked={localSettings.costTrackingDisplay}
+              checked={settings.costTrackingDisplay}
               onChange={(e) => updateField("costTrackingDisplay", e.target.checked)}
               className="w-4 h-4 rounded bg-zinc-800 border-zinc-700"
             />

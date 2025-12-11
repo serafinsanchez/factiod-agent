@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { SettingsForm } from "../SettingsForm";
 import { PromptAccordion } from "../PromptAccordion";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,39 +10,47 @@ import type { PublishingSettings as PublishingSettingsType } from "@/lib/setting
 
 export function PublishingSettings() {
   const { data, isLoading, isSaving, save, reset } = useSettings("publishing");
-  const [localSettings, setLocalSettings] = useState<PublishingSettingsType | null>(null);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [draft, setDraft] = useState<Partial<PublishingSettingsType>>({});
 
-  useEffect(() => {
-    if (data) {
-      setLocalSettings(data);
-      setHasChanges(false);
+  const settings = useMemo(() => {
+    if (!data) {
+      return null;
     }
-  }, [data]);
+    return { ...data, ...draft } as PublishingSettingsType;
+  }, [data, draft]);
+
+  const hasChanges = useMemo(() => {
+    if (!data) {
+      return false;
+    }
+
+    return (Object.keys(draft) as Array<keyof PublishingSettingsType>).some((key) => {
+      const value = draft[key];
+      return value !== undefined && value !== data[key];
+    });
+  }, [data, draft]);
 
   const updateField = <K extends keyof PublishingSettingsType>(
     field: K,
     value: PublishingSettingsType[K]
   ) => {
-    if (localSettings) {
-      setLocalSettings({ ...localSettings, [field]: value });
-      setHasChanges(true);
-    }
+    setDraft((current) => ({ ...current, [field]: value }));
   };
 
   const handleSave = async () => {
-    if (localSettings) {
-      await save(localSettings);
-      setHasChanges(false);
+    if (!data) {
+      return;
     }
+    await save({ ...data, ...draft } as PublishingSettingsType);
+    setDraft({});
   };
 
   const handleReset = () => {
     reset();
-    setHasChanges(false);
+    setDraft({});
   };
 
-  if (isLoading || !localSettings) {
+  if (isLoading || !settings) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-zinc-400">Loading settings...</div>
@@ -66,7 +74,7 @@ export function PublishingSettings() {
           <Label htmlFor="defaultPromoCopy">Promo Copy Outro</Label>
           <Textarea
             id="defaultPromoCopy"
-            value={localSettings.defaultPromoCopy}
+            value={settings.defaultPromoCopy}
             onChange={(e) => updateField("defaultPromoCopy", e.target.value)}
             rows={4}
             placeholder="Optional promo copy to add at the end of videos..."
@@ -86,14 +94,14 @@ export function PublishingSettings() {
               id: "titleDescription",
               title: "Title & Description",
               description: "Generate YouTube title and description",
-              value: localSettings.promptTitleDescription,
+              value: settings.promptTitleDescription,
               onChange: (value) => updateField("promptTitleDescription", value),
             },
             {
               id: "thumbnail",
               title: "Thumbnail Prompt",
               description: "Generate thumbnail creative brief",
-              value: localSettings.promptThumbnail,
+              value: settings.promptThumbnail,
               onChange: (value) => updateField("promptThumbnail", value),
             },
           ]}

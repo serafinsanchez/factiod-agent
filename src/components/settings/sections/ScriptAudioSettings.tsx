@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { SettingsForm } from "../SettingsForm";
 import { PromptAccordion } from "../PromptAccordion";
 import { Select } from "@/components/ui/select";
@@ -12,39 +12,47 @@ import type { ScriptAudioSettings as ScriptAudioSettingsType } from "@/lib/setti
 
 export function ScriptAudioSettings() {
   const { data, isLoading, isSaving, save, reset } = useSettings("scriptAudio");
-  const [localSettings, setLocalSettings] = useState<ScriptAudioSettingsType | null>(null);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [draft, setDraft] = useState<Partial<ScriptAudioSettingsType>>({});
 
-  useEffect(() => {
-    if (data) {
-      setLocalSettings(data);
-      setHasChanges(false);
+  const settings = useMemo(() => {
+    if (!data) {
+      return null;
     }
-  }, [data]);
+    return { ...data, ...draft } as ScriptAudioSettingsType;
+  }, [data, draft]);
+
+  const hasChanges = useMemo(() => {
+    if (!data) {
+      return false;
+    }
+
+    return (Object.keys(draft) as Array<keyof ScriptAudioSettingsType>).some((key) => {
+      const value = draft[key];
+      return value !== undefined && value !== data[key];
+    });
+  }, [data, draft]);
 
   const updateField = <K extends keyof ScriptAudioSettingsType>(
     field: K,
     value: ScriptAudioSettingsType[K]
   ) => {
-    if (localSettings) {
-      setLocalSettings({ ...localSettings, [field]: value });
-      setHasChanges(true);
-    }
+    setDraft((current) => ({ ...current, [field]: value }));
   };
 
   const handleSave = async () => {
-    if (localSettings) {
-      await save(localSettings);
-      setHasChanges(false);
+    if (!data) {
+      return;
     }
+    await save({ ...data, ...draft } as ScriptAudioSettingsType);
+    setDraft({});
   };
 
   const handleReset = () => {
     reset();
-    setHasChanges(false);
+    setDraft({});
   };
 
-  if (isLoading || !localSettings) {
+  if (isLoading || !settings) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-zinc-400">Loading settings...</div>
@@ -70,10 +78,13 @@ export function ScriptAudioSettings() {
             <Label htmlFor="llmModel">LLM Model</Label>
             <Select
               id="llmModel"
-              value={localSettings.llmModel}
-              onChange={(e) => updateField("llmModel", e.target.value as any)}
+              value={settings.llmModel}
+              onChange={(e) =>
+                updateField("llmModel", e.target.value as ScriptAudioSettingsType["llmModel"])
+              }
               options={[
                 { value: "claude-sonnet-4.5", label: "Claude Sonnet 4.5" },
+                { value: "claude-opus-4.5", label: "Claude Opus 4.5" },
                 { value: "gpt-5.1-2025-11-13", label: "GPT-5.1" },
                 { value: "kimik2-thinking", label: "Kimik2 Thinking" },
                 { value: "gemini-3-pro", label: "Gemini 3 Pro" },
@@ -86,7 +97,7 @@ export function ScriptAudioSettings() {
             <Input
               id="defaultWordCount"
               type="number"
-              value={localSettings.defaultWordCount}
+              value={settings.defaultWordCount}
               onChange={(e) => updateField("defaultWordCount", parseInt(e.target.value))}
             />
           </div>
@@ -102,7 +113,7 @@ export function ScriptAudioSettings() {
             <Label htmlFor="audioVoice">Audio Voice ID</Label>
             <Input
               id="audioVoice"
-              value={localSettings.audioVoice}
+              value={settings.audioVoice}
               onChange={(e) => updateField("audioVoice", e.target.value)}
               placeholder="ElevenLabs voice ID"
             />
@@ -112,8 +123,13 @@ export function ScriptAudioSettings() {
             <Label htmlFor="narrationModel">Narration Model</Label>
             <Select
               id="narrationModel"
-              value={localSettings.narrationModel}
-              onChange={(e) => updateField("narrationModel", e.target.value as any)}
+              value={settings.narrationModel}
+              onChange={(e) =>
+                updateField(
+                  "narrationModel",
+                  e.target.value as ScriptAudioSettingsType["narrationModel"]
+                )
+              }
               options={[
                 { value: "eleven_v3", label: "ElevenLabs V3" },
                 { value: "eleven_multilingual_v2", label: "ElevenLabs Multilingual V2" },
@@ -133,49 +149,49 @@ export function ScriptAudioSettings() {
               id: "keyConcepts",
               title: "Key Concepts",
               description: "Extract main concepts from the topic",
-              value: localSettings.promptKeyConcepts,
+              value: settings.promptKeyConcepts,
               onChange: (value) => updateField("promptKeyConcepts", value),
             },
             {
               id: "hook",
               title: "Hook Generation",
               description: "Create engaging opening hook",
-              value: localSettings.promptHook,
+              value: settings.promptHook,
               onChange: (value) => updateField("promptHook", value),
             },
             {
               id: "quizzes",
               title: "Quiz Generation",
               description: "Generate quiz questions and answers",
-              value: localSettings.promptQuizzes,
+              value: settings.promptQuizzes,
               onChange: (value) => updateField("promptQuizzes", value),
             },
             {
               id: "script",
               title: "Script Generation",
               description: "Main video script creation",
-              value: localSettings.promptScript,
+              value: settings.promptScript,
               onChange: (value) => updateField("promptScript", value),
             },
             {
               id: "scriptQA",
               title: "Script QA",
               description: "Quality assurance for script",
-              value: localSettings.promptScriptQA,
+              value: settings.promptScriptQA,
               onChange: (value) => updateField("promptScriptQA", value),
             },
             {
               id: "narrationClean",
               title: "Narration Cleaner",
               description: "Remove stage directions from script",
-              value: localSettings.promptNarrationClean,
+              value: settings.promptNarrationClean,
               onChange: (value) => updateField("promptNarrationClean", value),
             },
             {
               id: "narrationAudioTags",
               title: "Narration Audio Tags",
               description: "Add ElevenLabs voice tags",
-              value: localSettings.promptNarrationAudioTags,
+              value: settings.promptNarrationAudioTags,
               onChange: (value) => updateField("promptNarrationAudioTags", value),
             },
           ]}

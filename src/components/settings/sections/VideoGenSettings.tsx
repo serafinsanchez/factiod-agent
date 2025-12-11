@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { SettingsForm } from "../SettingsForm";
 import { PromptAccordion } from "../PromptAccordion";
 import { Select } from "@/components/ui/select";
@@ -12,39 +12,47 @@ import type { VideoGenSettings as VideoGenSettingsType } from "@/lib/settings/ty
 
 export function VideoGenSettings() {
   const { data, isLoading, isSaving, save, reset } = useSettings("videoGen");
-  const [localSettings, setLocalSettings] = useState<VideoGenSettingsType | null>(null);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [draft, setDraft] = useState<Partial<VideoGenSettingsType>>({});
 
-  useEffect(() => {
-    if (data) {
-      setLocalSettings(data);
-      setHasChanges(false);
+  const settings = useMemo(() => {
+    if (!data) {
+      return null;
     }
-  }, [data]);
+    return { ...data, ...draft } as VideoGenSettingsType;
+  }, [data, draft]);
+
+  const hasChanges = useMemo(() => {
+    if (!data) {
+      return false;
+    }
+
+    return (Object.keys(draft) as Array<keyof VideoGenSettingsType>).some((key) => {
+      const value = draft[key];
+      return value !== undefined && value !== data[key];
+    });
+  }, [data, draft]);
 
   const updateField = <K extends keyof VideoGenSettingsType>(
     field: K,
     value: VideoGenSettingsType[K]
   ) => {
-    if (localSettings) {
-      setLocalSettings({ ...localSettings, [field]: value });
-      setHasChanges(true);
-    }
+    setDraft((current) => ({ ...current, [field]: value }));
   };
 
   const handleSave = async () => {
-    if (localSettings) {
-      await save(localSettings);
-      setHasChanges(false);
+    if (!data) {
+      return;
     }
+    await save({ ...data, ...draft } as VideoGenSettingsType);
+    setDraft({});
   };
 
   const handleReset = () => {
     reset();
-    setHasChanges(false);
+    setDraft({});
   };
 
-  if (isLoading || !localSettings) {
+  if (isLoading || !settings) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-zinc-400">Loading settings...</div>
@@ -70,8 +78,10 @@ export function VideoGenSettings() {
             <Label htmlFor="videoModel">Video Model</Label>
             <Select
               id="videoModel"
-              value={localSettings.videoModel}
-              onChange={(e) => updateField("videoModel", e.target.value as any)}
+              value={settings.videoModel}
+              onChange={(e) =>
+                updateField("videoModel", e.target.value as VideoGenSettingsType["videoModel"])
+              }
               options={[
                 { value: "WAN_2_2", label: "WAN 2.2 (14B)" },
                 { value: "WAN_2_2_SMALL", label: "WAN 2.2 Small (1.3B)" },
@@ -85,8 +95,8 @@ export function VideoGenSettings() {
             <Label htmlFor="preset">Preset</Label>
             <Select
               id="preset"
-              value={localSettings.preset}
-              onChange={(e) => updateField("preset", e.target.value as any)}
+              value={settings.preset}
+              onChange={(e) => updateField("preset", e.target.value as VideoGenSettingsType["preset"])}
               options={[
                 { value: "quality", label: "Quality (Slow, High Quality)" },
                 { value: "smooth", label: "Smooth (Recommended for FLF2V)" },
@@ -107,8 +117,10 @@ export function VideoGenSettings() {
             <Label htmlFor="resolution">Resolution</Label>
             <Select
               id="resolution"
-              value={localSettings.resolution}
-              onChange={(e) => updateField("resolution", e.target.value as any)}
+              value={settings.resolution}
+              onChange={(e) =>
+                updateField("resolution", e.target.value as VideoGenSettingsType["resolution"])
+              }
               options={[
                 { value: "480p", label: "480p" },
                 { value: "580p", label: "580p" },
@@ -121,8 +133,10 @@ export function VideoGenSettings() {
             <Label htmlFor="aspectRatio">Aspect Ratio</Label>
             <Select
               id="aspectRatio"
-              value={localSettings.aspectRatio}
-              onChange={(e) => updateField("aspectRatio", e.target.value as any)}
+              value={settings.aspectRatio}
+              onChange={(e) =>
+                updateField("aspectRatio", e.target.value as VideoGenSettingsType["aspectRatio"])
+              }
               options={[
                 { value: "auto", label: "Auto" },
                 { value: "16:9", label: "16:9 (YouTube Standard)" },
@@ -146,7 +160,7 @@ export function VideoGenSettings() {
               type="number"
               min={2}
               max={40}
-              value={localSettings.numInferenceSteps}
+              value={settings.numInferenceSteps}
               onChange={(e) => updateField("numInferenceSteps", parseInt(e.target.value))}
             />
             <p className="text-xs text-zinc-500">Higher = better quality, slower (2-40)</p>
@@ -160,7 +174,7 @@ export function VideoGenSettings() {
               min={1}
               max={10}
               step={0.1}
-              value={localSettings.guidanceScale}
+              value={settings.guidanceScale}
               onChange={(e) => updateField("guidanceScale", parseFloat(e.target.value))}
             />
             <p className="text-xs text-zinc-500">Higher = better prompt adherence (1-10)</p>
@@ -177,8 +191,13 @@ export function VideoGenSettings() {
             <Label htmlFor="interpolatorModel">Interpolator Model</Label>
             <Select
               id="interpolatorModel"
-              value={localSettings.interpolatorModel}
-              onChange={(e) => updateField("interpolatorModel", e.target.value as any)}
+              value={settings.interpolatorModel}
+              onChange={(e) =>
+                updateField(
+                  "interpolatorModel",
+                  e.target.value as VideoGenSettingsType["interpolatorModel"]
+                )
+              }
               options={[
                 { value: "none", label: "None" },
                 { value: "film", label: "FILM (Recommended)" },
@@ -194,7 +213,7 @@ export function VideoGenSettings() {
               type="number"
               min={0}
               max={4}
-              value={localSettings.numInterpolatedFrames}
+              value={settings.numInterpolatedFrames}
               onChange={(e) => updateField("numInterpolatedFrames", parseInt(e.target.value))}
             />
             <p className="text-xs text-zinc-500">Between each pair (0-4)</p>
@@ -209,7 +228,7 @@ export function VideoGenSettings() {
           <Label htmlFor="negativePrompt">Elements to Avoid</Label>
           <Textarea
             id="negativePrompt"
-            value={localSettings.negativePrompt}
+            value={settings.negativePrompt}
             onChange={(e) => updateField("negativePrompt", e.target.value)}
             rows={3}
             placeholder="blur, distort, low quality..."
@@ -226,7 +245,7 @@ export function VideoGenSettings() {
               id: "sceneVideoPrompts",
               title: "Scene Video Prompts",
               description: "Generate motion prompts for video generation",
-              value: localSettings.promptSceneVideoPrompts,
+              value: settings.promptSceneVideoPrompts,
               onChange: (value) => updateField("promptSceneVideoPrompts", value),
             },
           ]}

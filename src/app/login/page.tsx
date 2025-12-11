@@ -79,14 +79,15 @@ export default function LoginPage() {
             <form className="space-y-5" onSubmit={handleSubmit}>
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-xs uppercase tracking-[0.2em] text-zinc-500">
-                  Email
+                  Username
                 </Label>
                 <Input
                   id="email"
-                  type="email"
-                  placeholder="sasha@getgoally.com"
+                  type="text"
+                  placeholder="videoteam"
                   value={email}
                   autoComplete="username"
+                  spellCheck={false}
                   onChange={(event) => setEmail(event.target.value)}
                   required
                   className="h-11 rounded-2xl border border-white/10 bg-zinc-900/80 text-sm text-white placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-white/70"

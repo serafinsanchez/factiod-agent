@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { SettingsForm } from "../SettingsForm";
 import { PromptAccordion } from "../PromptAccordion";
 import { Input } from "@/components/ui/input";
@@ -10,39 +10,47 @@ import type { TimingStoryboardSettings as TimingStoryboardSettingsType } from "@
 
 export function TimingStoryboardSettings() {
   const { data, isLoading, isSaving, save, reset } = useSettings("timingStoryboard");
-  const [localSettings, setLocalSettings] = useState<TimingStoryboardSettingsType | null>(null);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [draft, setDraft] = useState<Partial<TimingStoryboardSettingsType>>({});
 
-  useEffect(() => {
-    if (data) {
-      setLocalSettings(data);
-      setHasChanges(false);
+  const settings = useMemo(() => {
+    if (!data) {
+      return null;
     }
-  }, [data]);
+    return { ...data, ...draft } as TimingStoryboardSettingsType;
+  }, [data, draft]);
+
+  const hasChanges = useMemo(() => {
+    if (!data) {
+      return false;
+    }
+
+    return (Object.keys(draft) as Array<keyof TimingStoryboardSettingsType>).some((key) => {
+      const value = draft[key];
+      return value !== undefined && value !== data[key];
+    });
+  }, [data, draft]);
 
   const updateField = <K extends keyof TimingStoryboardSettingsType>(
     field: K,
     value: TimingStoryboardSettingsType[K]
   ) => {
-    if (localSettings) {
-      setLocalSettings({ ...localSettings, [field]: value });
-      setHasChanges(true);
-    }
+    setDraft((current) => ({ ...current, [field]: value }));
   };
 
   const handleSave = async () => {
-    if (localSettings) {
-      await save(localSettings);
-      setHasChanges(false);
+    if (!data) {
+      return;
     }
+    await save({ ...data, ...draft } as TimingStoryboardSettingsType);
+    setDraft({});
   };
 
   const handleReset = () => {
     reset();
-    setHasChanges(false);
+    setDraft({});
   };
 
-  if (isLoading || !localSettings) {
+  if (isLoading || !settings) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-zinc-400">Loading settings...</div>
@@ -69,7 +77,7 @@ export function TimingStoryboardSettings() {
             <Input
               id="sceneDurationMin"
               type="number"
-              value={localSettings.sceneDurationMin}
+              value={settings.sceneDurationMin}
               onChange={(e) => updateField("sceneDurationMin", parseInt(e.target.value))}
             />
           </div>
@@ -79,7 +87,7 @@ export function TimingStoryboardSettings() {
             <Input
               id="sceneDurationMax"
               type="number"
-              value={localSettings.sceneDurationMax}
+              value={settings.sceneDurationMax}
               onChange={(e) => updateField("sceneDurationMax", parseInt(e.target.value))}
             />
           </div>
@@ -95,7 +103,7 @@ export function TimingStoryboardSettings() {
               id: "productionScript",
               title: "Production Script",
               description: "Convert video script into scene-by-scene breakdown",
-              value: localSettings.promptProductionScript,
+              value: settings.promptProductionScript,
               onChange: (value) => updateField("promptProductionScript", value),
             },
           ]}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { SettingsForm } from "../SettingsForm";
 import { PromptAccordion } from "../PromptAccordion";
 import { Select } from "@/components/ui/select";
@@ -11,39 +11,47 @@ import type { ImagerySettings as ImagerySettingsType } from "@/lib/settings/type
 
 export function ImagerySettings() {
   const { data, isLoading, isSaving, save, reset } = useSettings("imagery");
-  const [localSettings, setLocalSettings] = useState<ImagerySettingsType | null>(null);
-  const [hasChanges, setHasChanges] = useState(false);
+  const [draft, setDraft] = useState<Partial<ImagerySettingsType>>({});
 
-  useEffect(() => {
-    if (data) {
-      setLocalSettings(data);
-      setHasChanges(false);
+  const settings = useMemo(() => {
+    if (!data) {
+      return null;
     }
-  }, [data]);
+    return { ...data, ...draft } as ImagerySettingsType;
+  }, [data, draft]);
+
+  const hasChanges = useMemo(() => {
+    if (!data) {
+      return false;
+    }
+
+    return (Object.keys(draft) as Array<keyof ImagerySettingsType>).some((key) => {
+      const value = draft[key];
+      return value !== undefined && value !== data[key];
+    });
+  }, [data, draft]);
 
   const updateField = <K extends keyof ImagerySettingsType>(
     field: K,
     value: ImagerySettingsType[K]
   ) => {
-    if (localSettings) {
-      setLocalSettings({ ...localSettings, [field]: value });
-      setHasChanges(true);
-    }
+    setDraft((current) => ({ ...current, [field]: value }));
   };
 
   const handleSave = async () => {
-    if (localSettings) {
-      await save(localSettings);
-      setHasChanges(false);
+    if (!data) {
+      return;
     }
+    await save({ ...data, ...draft } as ImagerySettingsType);
+    setDraft({});
   };
 
   const handleReset = () => {
     reset();
-    setHasChanges(false);
+    setDraft({});
   };
 
-  if (isLoading || !localSettings) {
+  if (isLoading || !settings) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-zinc-400">Loading settings...</div>
@@ -69,8 +77,13 @@ export function ImagerySettings() {
             <Label htmlFor="defaultVisualStyle">Default Visual Style</Label>
             <Select
               id="defaultVisualStyle"
-              value={localSettings.defaultVisualStyle}
-              onChange={(e) => updateField("defaultVisualStyle", e.target.value as any)}
+              value={settings.defaultVisualStyle}
+              onChange={(e) =>
+                updateField(
+                  "defaultVisualStyle",
+                  e.target.value as ImagerySettingsType["defaultVisualStyle"]
+                )
+              }
               options={[
                 { value: "pixar-3d", label: "Pixar / 3D Animation" },
                 { value: "paper-craft", label: "Paper Craft / Layered Cutout" },
@@ -83,8 +96,10 @@ export function ImagerySettings() {
             <Label htmlFor="videoFrameMode">Video Frame Mode</Label>
             <Select
               id="videoFrameMode"
-              value={localSettings.videoFrameMode}
-              onChange={(e) => updateField("videoFrameMode", e.target.value as any)}
+              value={settings.videoFrameMode}
+              onChange={(e) =>
+                updateField("videoFrameMode", e.target.value as ImagerySettingsType["videoFrameMode"])
+              }
               options={[
                 { value: "flf2v", label: "FLF2V (First-Last-Frame)" },
                 { value: "first-frame-only", label: "First Frame Only" },
@@ -97,7 +112,7 @@ export function ImagerySettings() {
           <input
             type="checkbox"
             id="characterReferenceEnabled"
-            checked={localSettings.characterReferenceEnabled}
+            checked={settings.characterReferenceEnabled}
             onChange={(e) => updateField("characterReferenceEnabled", e.target.checked)}
             className="w-4 h-4 rounded bg-zinc-800 border-zinc-700"
           />
@@ -126,7 +141,7 @@ export function ImagerySettings() {
               id: "sceneImagePrompts",
               title: "Scene Image Prompts",
               description: "Convert scenes into image generation prompts",
-              value: localSettings.promptSceneImagePrompts,
+              value: settings.promptSceneImagePrompts,
               onChange: (value) => updateField("promptSceneImagePrompts", value),
             },
           ]}

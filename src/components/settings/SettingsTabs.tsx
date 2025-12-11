@@ -11,6 +11,13 @@ export type SettingsTabId =
   | "global"
   | "admin";
 
+const VIDEO_TEAM_HIDDEN_TABS = new Set<SettingsTabId>([
+  "timingStoryboard",
+  "imagery",
+  "videoGen",
+  "admin",
+]);
+
 interface Tab {
   id: SettingsTabId;
   label: string;
@@ -56,11 +63,17 @@ const TABS: Tab[] = [
 ];
 
 interface SettingsTabsProps {
+  role?: string;
   activeTab: SettingsTabId;
   onTabChange: (tab: SettingsTabId) => void;
 }
 
-export function SettingsTabs({ activeTab, onTabChange }: SettingsTabsProps) {
+export function SettingsTabs({ role, activeTab, onTabChange }: SettingsTabsProps) {
+  const tabs =
+    role === "videoteam"
+      ? TABS.filter((tab) => !VIDEO_TEAM_HIDDEN_TABS.has(tab.id))
+      : TABS;
+
   return (
     <nav className="flex flex-col gap-1 min-w-[240px]">
       <div className="px-3 mb-2">
@@ -68,7 +81,7 @@ export function SettingsTabs({ activeTab, onTabChange }: SettingsTabsProps) {
           Settings
         </p>
       </div>
-      {TABS.map((tab) => (
+      {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}

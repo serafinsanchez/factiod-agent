@@ -4,6 +4,7 @@ export const DEFAULT_MODEL_ID: ModelId = 'claude-sonnet-4.5';
 
 export const SUPPORTED_MODEL_IDS: readonly ModelId[] = [
   DEFAULT_MODEL_ID,
+  'claude-opus-4.5',
   'gpt-5.1-2025-11-13',
   'kimik2-thinking',
   'gemini-3-pro',

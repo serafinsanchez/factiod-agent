@@ -42,7 +42,7 @@ export function SettingsForm({
           onClick={onReset}
           disabled={isSaving}
           variant="outline"
-          className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          className="border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-700 hover:text-white dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-600 dark:hover:text-white"
         >
           Reset to Defaults
         </Button>

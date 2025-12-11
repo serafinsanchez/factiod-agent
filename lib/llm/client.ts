@@ -17,6 +17,7 @@ const MODEL_NAME_BY_ID: Record<ModelId, string> = {
   'gpt-5.1-2025-11-13': 'gpt-5.1-2025-11-13',
   'kimik2-thinking': 'kimi-k2-thinking',
   'claude-sonnet-4.5': 'claude-sonnet-4-5',
+  'claude-opus-4.5': 'claude-opus-4-5-20251101',
   'gemini-3-pro': 'gemini-3-pro-preview',
 };
 
@@ -366,7 +367,7 @@ export async function callModel(model: ModelId, prompt: string, maxTokens?: numb
     return callMoonshotAPI(modelName, prompt, maxTokens);
   }
 
-  if (model === 'claude-sonnet-4.5') {
+  if (model === 'claude-sonnet-4.5' || model === 'claude-opus-4.5') {
     return callAnthropic(modelName, prompt, maxTokens);
   }
 

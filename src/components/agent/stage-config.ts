@@ -42,7 +42,7 @@ export const STAGES: StageDefinition[] = [
   {
     id: "publishing",
     label: "Publishing",
-    description: "Assemble final video, title/description, and thumbnail.",
+    description: "Create title/description and thumbnail.",
     steps: ["videoAssembly", "titleDescription", "thumbnail", "thumbnailGenerate"],
   },
 ];

@@ -27,8 +27,8 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const cookieStore = await cookies();
-  const isAuthenticated =
-    cookieStore.get("factoids-auth")?.value === "authenticated";
+  const authRole = cookieStore.get("factoids-auth")?.value;
+  const isAuthenticated = authRole === "admin" || authRole === "videoteam";
 
   return (
     <html lang="en">

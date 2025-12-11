@@ -11,6 +11,7 @@ import type { UseAgentPipelineReturn } from "@/hooks/use-agent-pipeline";
 import { STEP_CONFIGS } from "@/lib/agent/steps";
 import { getVariableValueFromPipeline } from "@/lib/agent/variable-metadata";
 import type { StepId, VariableKey, VisualStyleId } from "@/types/agent";
+import type { StageDefinition } from "./stage-config";
 
 type AgentShellProps = {
   state: UseAgentPipelineReturn["state"];
@@ -18,6 +19,7 @@ type AgentShellProps = {
   actions: UseAgentPipelineReturn["actions"];
   activeStageId: StageId;
   onStageChangeAction: (stageId: StageId) => void;
+  stages?: StageDefinition[];
 };
 
 export function AgentShell({
@@ -26,6 +28,7 @@ export function AgentShell({
   actions,
   activeStageId,
   onStageChangeAction,
+  stages = STAGES,
 }: AgentShellProps) {
   const [editingVariable, setEditingVariable] = useState<VariableKey | null>(null);
   const [isStyleSelectorOpen, setIsStyleSelectorOpen] = useState(false);
@@ -46,13 +49,13 @@ export function AgentShell({
 
   const stepToStageMap = useMemo(() => {
     const map: Record<StepId, StageId> = {} as Record<StepId, StageId>;
-    STAGES.forEach((stage) => {
+    stages.forEach((stage) => {
       stage.steps.forEach((stepId) => {
         map[stepId] = stage.id;
       });
     });
     return map;
-  }, []);
+  }, [stages]);
 
   const handleStyleSelected = (styleId: VisualStyleId) => {
     setIsStyleSelectorOpen(false);
@@ -96,7 +99,7 @@ export function AgentShell({
   return (
     <div className="min-h-screen bg-zinc-950/98 text-zinc-100">
       <StageNavBar
-        stages={STAGES}
+        stages={stages}
         activeStageId={activeStageId}
         onSelectStage={handleStageSelect}
       />
@@ -105,7 +108,7 @@ export function AgentShell({
         <main className="flex w-full flex-col gap-8 pb-16">
           <section className="space-y-6">
             <StageView
-              stages={STAGES}
+              stages={stages}
               activeStageId={activeStageId}
               stepConfigs={STEP_CONFIGS}
               state={state}
@@ -133,6 +136,7 @@ export function AgentShell({
       />
 
       <StyleSelector
+        key={isStyleSelectorOpen ? "open" : "closed"}
         isOpen={isStyleSelectorOpen}
         onSelect={handleStyleSelected}
         onClose={() => setIsStyleSelectorOpen(false)}

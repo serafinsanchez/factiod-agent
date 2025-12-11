@@ -1,51 +1,14 @@
-"use client";
+import { cookies } from "next/headers";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { getStagesForRole } from "@/lib/auth/stageAccess";
+import ProjectPageClient from "./ProjectPageClient";
 
-import { AgentShell } from "@/components/agent/AgentShell";
-import type { StageId } from "@/components/agent/stage-config";
-import { useAgentPipeline } from "@/hooks/use-agent-pipeline";
-import type { VisualStyleId } from "@/types/agent";
+const AUTH_COOKIE_NAME = "factoids-auth";
 
-export default function ProjectPage() {
-  const params = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
-  const pipeline = useAgentPipeline();
-  const [activeStageId, setActiveStageId] = useState<StageId>("scriptAudio");
-  const initializedRef = useRef(false);
+export default async function ProjectPage() {
+  const cookieStore = await cookies();
+  const role = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+  const stages = getStagesForRole(role);
 
-  const styleId = searchParams.get("style") as VisualStyleId | null;
-  const creatorName = searchParams.get("creator");
-  const topic = searchParams.get("topic");
-
-  const projectId = useMemo(() => params?.id ?? "new", [params]);
-
-  useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-
-    if (projectId === "new") {
-      pipeline.actions.newProject(styleId ?? undefined);
-      if (creatorName) {
-        pipeline.actions.setPipeline((prev) => ({ ...prev, creatorName }));
-      }
-      if (topic) {
-        pipeline.actions.setTopic(topic);
-      }
-      return;
-    }
-
-    pipeline.actions.selectProject(projectId);
-  }, [pipeline.actions, projectId, styleId, creatorName, topic]);
-
-  return (
-    <AgentShell
-      state={pipeline.state}
-      derived={pipeline.derived}
-      actions={pipeline.actions}
-      activeStageId={activeStageId}
-      onStageChangeAction={setActiveStageId}
-    />
-  );
+  return <ProjectPageClient stages={stages} />;
 }

@@ -846,14 +846,10 @@ function SceneImagesStep({
     return sceneAssets.find((scene) => scene.sceneNumber === selectedSceneNumber) ?? null;
   }, [sceneAssets, selectedSceneNumber]);
 
-  useEffect(() => {
-    if (isLightboxOpen && !selectedSceneAsset) {
-      setIsLightboxOpen(false);
-    }
-  }, [isLightboxOpen, selectedSceneAsset]);
-
   const selectedTiming =
     selectedSceneNumber !== null ? sceneTimingMap.get(selectedSceneNumber) : undefined;
+
+  const lightboxOpen = isLightboxOpen && Boolean(selectedSceneAsset);
 
   const handleOpenLightbox = (sceneNumber: number, frameKind: FrameKind) => {
     setSelectedSceneNumber(sceneNumber);
@@ -990,7 +986,12 @@ function SceneImagesStep({
       )}
 
       <SceneImageLightbox
-        open={isLightboxOpen && Boolean(selectedSceneAsset)}
+        key={
+          lightboxOpen && selectedSceneAsset
+            ? `${selectedSceneAsset.sceneNumber}-${selectedFrameKind}`
+            : "closed"
+        }
+        open={lightboxOpen}
         sceneAsset={selectedSceneAsset}
         frameKind={selectedFrameKind}
         timeRange={selectedTiming}
@@ -1498,11 +1499,6 @@ function SceneImageLightbox({
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
-    setPromptDraft(currentPrompt);
-    setIsEditingPrompt(false);
-  }, [currentPrompt]);
-
-  useEffect(() => {
     if (!open) {
       return;
     }
@@ -1529,14 +1525,20 @@ function SceneImageLightbox({
   const frameLabel = frameKind === "first" ? "First Frame" : "Last Frame";
 
   const handlePromptSave = () => {
-    onPromptChange(promptDraft.trim());
+    const trimmedPrompt = promptDraft.trim();
+    onPromptChange(trimmedPrompt);
+    setPromptDraft(trimmedPrompt);
     setIsEditingPrompt(false);
   };
 
-  const focusPrompt = () => {
+  const focusPrompt = (valueForCursor: string) => {
     window.setTimeout(() => {
-      promptRef.current?.focus();
-      promptRef.current?.setSelectionRange(promptDraft.length, promptDraft.length);
+      const element = promptRef.current;
+      if (!element) {
+        return;
+      }
+      element.focus();
+      element.setSelectionRange(valueForCursor.length, valueForCursor.length);
     }, 0);
   };
 
@@ -1615,8 +1617,9 @@ function SceneImageLightbox({
                   if (isEditingPrompt) {
                     handlePromptSave();
                   } else {
+                    setPromptDraft(currentPrompt);
                     setIsEditingPrompt(true);
-                    focusPrompt();
+                    focusPrompt(currentPrompt);
                   }
                 }}
               >
@@ -1627,7 +1630,7 @@ function SceneImageLightbox({
 
             <textarea
               ref={promptRef}
-              value={promptDraft}
+              value={isEditingPrompt ? promptDraft : currentPrompt}
               disabled={!isEditingPrompt}
               onChange={(event) => setPromptDraft(event.target.value)}
               className="min-h-[160px] w-full resize-none rounded-2xl border border-white/20 bg-zinc-900/60 p-3 text-sm text-white placeholder:text-zinc-500 focus:border-white/60 focus:outline-none disabled:opacity-70"

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const AUTH_COOKIE_NAME = "factoids-auth";
-const AUTH_COOKIE_VALUE = "authenticated";
+const AUTH_ROLES = new Set(["admin", "videoteam"]);
 
 const PUBLIC_PATHS = new Set<string>([
   "/login",
@@ -23,7 +23,7 @@ export function middleware(request: NextRequest) {
   }
 
   const authToken = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  const isAuthenticated = authToken === AUTH_COOKIE_VALUE;
+  const isAuthenticated = authToken !== undefined && AUTH_ROLES.has(authToken);
 
   if (isAuthenticated) {
     return NextResponse.next();

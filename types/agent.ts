@@ -1,5 +1,6 @@
 export type ModelId =
   | 'claude-sonnet-4.5'
+  | 'claude-opus-4.5'
   | 'gpt-5.1-2025-11-13'
   | 'kimik2-thinking'
   | 'gemini-3-pro';

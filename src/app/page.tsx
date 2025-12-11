@@ -19,6 +19,8 @@ export default function HomePage() {
   const [creatorName, setCreatorName] = useState("");
   const [topic, setTopic] = useState("");
 
+  const canStartNewProject = topic.trim().length > 0 && creatorName.trim().length > 0;
+
   useEffect(() => {
     const loadProjects = async () => {
       try {
@@ -40,7 +42,30 @@ export default function HomePage() {
     loadProjects();
   }, []);
 
+  const handleDeleteProject = async (projectId: string): Promise<boolean> => {
+    try {
+      setError(null);
+      const response = await fetch("/api/history/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: projectId }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to delete project");
+      }
+
+      setProjects((prev) => prev.filter((project) => project.id !== projectId));
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete project");
+      return false;
+    }
+  };
+
   const handleNewProject = () => {
+    if (!canStartNewProject) return;
     setIsStyleSelectorOpen(true);
   };
 
@@ -95,13 +120,26 @@ export default function HomePage() {
                 />
               </div>
               <div className="flex items-end justify-end">
-                <Button
-                  size="lg"
-                  className="w-full rounded-2xl border border-white/15 bg-zinc-900/70 px-5 text-sm font-semibold text-white hover:bg-zinc-800 sm:w-auto"
-                  onClick={handleNewProject}
-                >
-                  Start a New Project
-                </Button>
+                <div className="flex w-full flex-col items-end gap-2 sm:w-auto">
+                  <Button
+                    size="lg"
+                    className="w-full rounded-2xl border border-white/15 bg-zinc-900/70 px-5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-zinc-900/70 sm:w-auto"
+                    onClick={handleNewProject}
+                    disabled={!canStartNewProject}
+                    title={
+                      canStartNewProject
+                        ? "Start a new project"
+                        : "Enter a topic and creator name to start a new project"
+                    }
+                  >
+                    Start a New Project
+                  </Button>
+                  {!canStartNewProject && (
+                    <p className="text-xs text-zinc-500">
+                      Add a topic and creator name to continue.
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -118,11 +156,12 @@ export default function HomePage() {
             Loading projects…
           </div>
         ) : (
-          <ProjectsTable projects={projects} />
+          <ProjectsTable projects={projects} onDeleteProject={handleDeleteProject} />
         )}
       </div>
 
       <StyleSelector
+        key={isStyleSelectorOpen ? "open" : "closed"}
         isOpen={isStyleSelectorOpen}
         onSelect={handleStyleSelected}
         onClose={() => setIsStyleSelectorOpen(false)}
