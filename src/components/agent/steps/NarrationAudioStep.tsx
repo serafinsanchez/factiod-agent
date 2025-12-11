@@ -169,8 +169,7 @@ export function NarrationAudioStep({
 
       {!narrationReady && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">
-          Run the Script → Narration Cleaner (and Audio Tags for Eleven v3) steps before
-          creating the voiceover.
+          Run the Script QA (and Audio Tags for Eleven v3) steps before creating the voiceover.
         </div>
       )}
 

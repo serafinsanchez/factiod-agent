@@ -78,21 +78,17 @@ Simple text divider: "Stage 2"
    - Textarea labeled "Prompt"
    - [Run] button (blue) | Expand link
 
-8. **Narration Cleaner**
+8. **ElevenLabs Audio Tags**
    - Textarea labeled "Prompt"
    - [Run] button (blue) | Expand link
 
-9. **ElevenLabs Audio Tags**
-   - Textarea labeled "Prompt"
-   - [Run] button (blue) | Expand link
-
-10. **Audio Model**
+9. **Audio Model**
     - Radio group with options:
       - Jane (v3) ○
       - Peter (v2) ● (selected)
     - [Run] button (blue) | Expand link
 
-11. **Download Audio**
+10. **Download Audio**
     - Text link "Download Audio" (underlined)
 
 ---

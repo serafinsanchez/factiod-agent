@@ -6,13 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { slugifyTopic } from "@/lib/slug";
-import type { StepConfig, StepId, VariableKey, SceneAsset, VideoFrameMode } from "@/types/agent";
+import type { StepConfig, StepId, VariableKey, SceneAsset, VideoFrameMode, VisualStyleId } from "@/types/agent";
 import { ChevronDown, Download, PenLine, RefreshCw, X } from "lucide-react";
+import { getVisualStylePreset } from "@/lib/agent/visual-styles";
 
 import { OutputPreview } from "./OutputPreview";
 import { StepEditor } from "./StepEditor";
 import type { UseAgentPipelineReturn } from "@/hooks/use-agent-pipeline";
 import type { StageDefinition, StageId } from "./stage-config";
+import { StyleSelector } from "./StyleSelector";
 
 interface StageViewProps {
   stages: StageDefinition[];
@@ -421,8 +423,7 @@ function NarrationAudioStep({
 
       {!narrationReady && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-100">
-          Run the Script → Narration Cleaner (and Audio Tags for Eleven v3) steps before
-          creating the voiceover.
+          Run the Script QA (and Audio Tags for Eleven v3) steps before creating the voiceover.
         </div>
       )}
 
@@ -594,6 +595,11 @@ function ProductionScriptStep({
 }) {
   const currentFrameMode: VideoFrameMode = state.pipeline.videoFrameMode || 'flf2v';
   const isStepCollapsed = collapsedSteps[stepConfig.id] ?? true;
+  const currentStylePreset = useMemo(
+    () => getVisualStylePreset(state.pipeline.visualStyleId),
+    [state.pipeline.visualStyleId],
+  );
+  const [isStyleSelectorOpen, setIsStyleSelectorOpen] = useState(false);
   
   const handleFrameModeChange = (mode: VideoFrameMode) => {
     actions.setPipeline((prev) => ({
@@ -601,9 +607,39 @@ function ProductionScriptStep({
       videoFrameMode: mode,
     }));
   };
+  
+  const handleStyleSelected = (styleId: VisualStyleId) => {
+    setIsStyleSelectorOpen(false);
+    actions.setVisualStyle(styleId);
+  };
 
   return (
     <div className="space-y-4">
+      {/* Visual Style */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <Label className="text-sm font-medium text-white">Visual Style</Label>
+            <p className="mt-1 text-xs text-zinc-400">
+              Affects the production script and all scene generation downstream.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-200">
+              {currentStylePreset.label}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full border border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white"
+              onClick={() => setIsStyleSelectorOpen(true)}
+            >
+              Change style
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {/* Frame Mode Toggle */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
         <div className="mb-3">
@@ -657,6 +693,19 @@ function ProductionScriptStep({
         isCollapsed={isStepCollapsed}
         onToggleCollapse={() => onStepCollapseChangeAction(stepConfig.id, !isStepCollapsed)}
       />
+
+      <StyleSelector
+        key={isStyleSelectorOpen ? "open" : "closed"}
+        isOpen={isStyleSelectorOpen}
+        initialStyleId={currentStylePreset.id}
+        contextLabel="Timing + Story"
+        title="Choose a visual style"
+        description="This affects the production script and all scene generation downstream."
+        confirmLabel="Apply style"
+        footerText="Changing style later may require re-running imagery steps."
+        onSelect={handleStyleSelected}
+        onClose={() => setIsStyleSelectorOpen(false)}
+      />
     </div>
   );
 }
@@ -678,12 +727,15 @@ function CharacterReferenceStep({
   const errorMessage = state.characterReferenceError ?? stepState?.errorMessage;
   
   // If we have the image, treat as complete regardless of status (handles saved state)
-  const effectiveStatus = hasReferenceImage && status !== "error" ? "success" : status;
+  const effectiveStatus =
+    status === "stale" ? "stale" : hasReferenceImage && status !== "error" ? "success" : status;
   const isRunning = state.isGeneratingCharacterReference || (effectiveStatus === "running");
 
   const statusLabel =
     effectiveStatus === "success"
       ? "Complete"
+      : effectiveStatus === "stale"
+        ? "Needs re-run"
       : effectiveStatus === "error"
         ? "Error"
         : isRunning
@@ -693,6 +745,8 @@ function CharacterReferenceStep({
   const statusColor =
     effectiveStatus === "success"
       ? "text-emerald-400"
+      : effectiveStatus === "stale"
+        ? "text-amber-200"
       : effectiveStatus === "error"
         ? "text-rose-400"
         : isRunning
@@ -883,6 +937,8 @@ function SceneImagesStep({
   const statusLabel =
     status === "success"
       ? "Complete"
+      : status === "stale"
+        ? "Needs re-run"
       : status === "running"
         ? `Generating ${progress?.completed ?? 0}/${progress?.total ?? 0}`
         : status === "error"
@@ -894,6 +950,8 @@ function SceneImagesStep({
       ? "text-emerald-200"
       : status === "error"
         ? "text-rose-200"
+        : status === "stale"
+          ? "text-amber-200"
         : status === "running"
           ? "text-amber-200"
           : "text-zinc-400";
@@ -1052,6 +1110,8 @@ function SceneVideosStep({
   const statusLabel =
     status === "success"
       ? "Complete"
+      : status === "stale"
+        ? "Needs re-run"
       : status === "running"
         ? `Generating ${progress?.completed ?? 0}/${progress?.total ?? 0}`
         : status === "error"
@@ -1063,6 +1123,8 @@ function SceneVideosStep({
       ? "text-emerald-200"
       : status === "error"
         ? "text-rose-200"
+        : status === "stale"
+          ? "text-amber-200"
         : status === "running"
           ? "text-amber-200"
           : "text-zinc-400";
@@ -1343,6 +1405,8 @@ function VideoAssemblyStep({
   const statusLabel =
     status === "success"
       ? "Complete"
+      : status === "stale"
+        ? "Needs re-run"
       : status === "running"
         ? state.videoAssemblyProgress || "Assembling"
         : status === "error"
@@ -1354,6 +1418,8 @@ function VideoAssemblyStep({
       ? "text-emerald-200"
       : status === "error"
         ? "text-rose-200"
+        : status === "stale"
+          ? "text-amber-200"
         : status === "running"
           ? "text-amber-200"
           : "text-zinc-400";
@@ -1450,9 +1516,11 @@ function VideoAssemblyStep({
         </div>
       )}
 
-      {finalVideoPath && status === "success" && (
+      {finalVideoPath && (status === "success" || status === "stale") && (
         <div className="space-y-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-          <p className="text-sm text-emerald-100">🎬 Video assembly complete!</p>
+          <p className="text-sm text-emerald-100">
+            {status === "stale" ? "Video assembly is out of date." : "Video assembly complete!"}
+          </p>
           <p className="text-xs text-zinc-400">Output: {finalVideoPath}</p>
         </div>
       )}

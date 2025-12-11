@@ -32,7 +32,6 @@ export interface ScriptAudioSettings {
   promptQuizzes: string;
   promptScript: string;
   promptScriptQA: string;
-  promptNarrationClean: string;
   promptNarrationAudioTags: string;
 }
 

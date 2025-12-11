@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ProjectsTable, type ProjectListItem } from "@/components/home/ProjectsTable";
-import { StyleSelector } from "@/components/agent/StyleSelector";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,7 +14,6 @@ export default function HomePage() {
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isStyleSelectorOpen, setIsStyleSelectorOpen] = useState(false);
   const [creatorName, setCreatorName] = useState("");
   const [topic, setTopic] = useState("");
 
@@ -66,13 +64,7 @@ export default function HomePage() {
 
   const handleNewProject = () => {
     if (!canStartNewProject) return;
-    setIsStyleSelectorOpen(true);
-  };
-
-  const handleStyleSelected = (styleId: string) => {
-    setIsStyleSelectorOpen(false);
     const query = new URLSearchParams();
-    if (styleId) query.set("style", styleId);
     if (creatorName.trim()) query.set("creator", creatorName.trim());
     if (topic.trim()) query.set("topic", topic.trim());
     router.push(`/project/new?${query.toString()}`);
@@ -159,13 +151,6 @@ export default function HomePage() {
           <ProjectsTable projects={projects} onDeleteProject={handleDeleteProject} />
         )}
       </div>
-
-      <StyleSelector
-        key={isStyleSelectorOpen ? "open" : "closed"}
-        isOpen={isStyleSelectorOpen}
-        onSelect={handleStyleSelected}
-        onClose={() => setIsStyleSelectorOpen(false)}
-      />
     </div>
   );
 }

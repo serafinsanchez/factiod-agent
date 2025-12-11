@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "audio/mpeg",
-        "Content-Length": String(audioBuffer.length),
+        "Content-Length": String(audioBytes.byteLength),
         "Cache-Control": "no-store",
       },
     });

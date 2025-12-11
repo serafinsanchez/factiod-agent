@@ -278,25 +278,6 @@ Final Script:
 <Return only the improved script text here, no brackets or commentary. This must be the exact version future steps use.>`,
   },
   {
-    id: 'narrationClean',
-    label: 'Narration Cleaner',
-    defaultModel: DEFAULT_MODEL_ID,
-    inputVars: ['VideoScript'],
-    outputVars: ['NarrationScript'],
-    promptTemplate: `Take this video script for a narrator.
-
-Remove any stage directions, sound cues, or editing notes that are not meant to be spoken.
-
-Keep everything that should be heard by kids as-is.
-
-Examples of things to remove: SFX notes, music instructions, "pause the video now" lines, timing instructions.
-
-Return only the cleaned narration text.
-
-Video Script:
-— [VideoScript] —`,
-  },
-  {
     id: 'narrationAudioTags',
     label: 'Narration Audio Tags (for Elevenlabs v3)',
     defaultModel: DEFAULT_MODEL_ID,
@@ -304,16 +285,32 @@ Video Script:
     outputVars: [],
     promptTemplate: `You are an AI assistant specializing in enhancing dialogue for speech generation.
 
-PRIMARY GOAL: Dynamically integrate audio tags (e.g., [laughs], [whispers], [sighs]) to be used by the Elevenlabs v3 text to speech model while STRICTLY preserving all original words and meaning. Do not remove or rewrite any words.
+PRIMARY GOAL: Add ElevenLabs v3 voice tags (e.g., [cheerful], [whispers], [excited]) while STRICTLY preserving all original spoken words and meaning. Do not remove, reorder, or rewrite any words.
 
 Rules:
-- Only add voice-related audio tags in square brackets. No SFX/music/stage directions.
-- Place tags before or after the specific phrase they modify.
-- Vary delivery: [whispers], [excited], [curious], [sighs], [laughs], [chuckles], [clears throat], [short pause], [long pause], etc.
-- You may add emphasis with capitalization, question marks, exclamation marks, or ellipses, but DO NOT change words.
+- Only add voice-related tags in square brackets. No SFX/music/stage directions.
+- Tag grammar is STRICT: exactly one word inside brackets: [word]
+  - The word must not contain spaces or commas.
+  - Use letters with optional hyphens only (examples: [cheerful], [verysoft], [shortpause], [half-whisper]).
+- Per line: add at most ONE tag total. (Zero tags is fine.)
+- Do NOT output tag lists or multiple tags in one bracket.
+- Place the tag immediately before or after the phrase it modifies.
+- You may add emphasis with capitalization, question marks, exclamation marks, or ellipses, but DO NOT change any words.
 - Do not introduce or imply sensitive topics.
 
-Output ONLY the enhanced narration text, same lines in the same order.
+GOOD examples:
+- [cheerful] Have you ever noticed how your tablet knows your face?
+- Have you ever noticed how your tablet knows your face? [curious]
+
+BAD examples (do not do these):
+- [cheerful, engaging] Have you ever noticed...
+- [short pause] Have you ever noticed...
+- [cheerful][excited] Have you ever noticed...
+- [cheerful] [excited] Have you ever noticed...
+
+Output format (strict):
+- Return ONLY the enhanced narration text.
+- Keep the exact same number of lines, and the same line order, as the input. Do not merge or split lines.
 
 Narration Script:
 — [NarrationScript] —`,

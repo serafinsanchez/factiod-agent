@@ -18,8 +18,8 @@ export const STAGES: StageDefinition[] = [
   {
     id: "scriptAudio",
     label: "Script + Audio",
-    description: "Write the story, add QA, clean narration, and render the voiceover.",
-    steps: ["keyConcepts", "hook", "quizzes", "script", "scriptQA", "narrationClean", "narrationAudioTags", "narrationAudio"],
+    description: "Write the story, add QA, and render the voiceover.",
+    steps: ["keyConcepts", "hook", "quizzes", "script", "scriptQA", "narrationAudioTags", "narrationAudio"],
   },
   {
     id: "timingStory",

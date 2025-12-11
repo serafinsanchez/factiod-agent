@@ -24,6 +24,76 @@ type ParsedRunStepRequestBody = {
 
 const SERVER_STEP_IDS = new Set<StepId>(SERVER_EXECUTABLE_STEP_IDS);
 
+function normalizeLineEndings(text: string) {
+  return text.replace(/\r\n/g, '\n');
+}
+
+function splitLinesForStrictComparison(text: string) {
+  // Preserve leading whitespace and internal empty lines; ignore only trailing newlines.
+  return normalizeLineEndings(text).trimEnd().split('\n');
+}
+
+function validateNarrationAudioTagsResponse({
+  inputNarrationScript,
+  responseText,
+}: {
+  inputNarrationScript: string;
+  responseText: string;
+}): { ok: true } | { ok: false; error: string } {
+  const inputLines = splitLinesForStrictComparison(inputNarrationScript);
+  const outputLines = splitLinesForStrictComparison(responseText);
+
+  if (outputLines.length !== inputLines.length) {
+    return {
+      ok: false,
+      error:
+        `Invalid audio tags output: expected exactly ${inputLines.length} lines (same as NarrationScript), ` +
+        `but got ${outputLines.length}. Do not merge or split lines.`,
+    };
+  }
+
+  const tagRegex = /\[[^\[\]]+\]/g;
+  const tagWordRegex = /^[A-Za-z]+(?:-[A-Za-z]+)*$/;
+
+  for (let i = 0; i < outputLines.length; i += 1) {
+    const line = outputLines[i] ?? '';
+    const matches = Array.from(line.matchAll(tagRegex));
+
+    if (matches.length > 1) {
+      return {
+        ok: false,
+        error:
+          `Invalid audio tag format on line ${i + 1}: only one tag is allowed per line. ` +
+          `Use a single one-word tag like [cheerful].`,
+      };
+    }
+
+    if (matches.length === 1) {
+      const raw = (matches[0]?.[0] ?? '').slice(1, -1); // content inside brackets, no trimming
+
+      if (raw.trim() !== raw) {
+        return {
+          ok: false,
+          error:
+            `Invalid audio tag format on line ${i + 1}: tag must be exactly one word with no spaces, ` +
+            `like [cheerful].`,
+        };
+      }
+
+      if (!tagWordRegex.test(raw)) {
+        return {
+          ok: false,
+          error:
+            `Invalid audio tag format on line ${i + 1}: tag must be exactly one word (letters with optional hyphens), ` +
+            `like [cheerful] or [half-whisper].`,
+        };
+      }
+    }
+  }
+
+  return { ok: true };
+}
+
 function isStepId(value: unknown): value is StepId {
   return typeof value === 'string' && SERVER_STEP_IDS.has(value as StepId);
 }
@@ -167,6 +237,25 @@ export async function POST(request: Request) {
       console.log(`[API]   Duration: ${(llmDuration / 1000).toFixed(1)}s`);
       console.log(`[API]   Response size: ${(responseSize / 1024).toFixed(1)} KB`);
       console.log(`[API]   Tokens: ${metrics?.totalTokens || 0} (input: ${metrics?.inputTokens || 0}, output: ${metrics?.outputTokens || 0})`);
+    }
+
+    if (stepId === 'narrationAudioTags') {
+      const inputNarrationScript = variables.NarrationScript ?? '';
+      if (!inputNarrationScript.trim()) {
+        return NextResponse.json(
+          { error: 'NarrationScript is required for narrationAudioTags validation.' },
+          { status: 400 },
+        );
+      }
+
+      const validation = validateNarrationAudioTagsResponse({
+        inputNarrationScript,
+        responseText,
+      });
+
+      if (!validation.ok) {
+        return NextResponse.json({ error: validation.error }, { status: 422 });
+      }
     }
 
     let producedVariables = { ...baseProducedVariables };

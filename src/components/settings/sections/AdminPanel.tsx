@@ -14,7 +14,6 @@ const STEP_TO_PROVIDER: Record<StepId, Provider> = {
   quizzes: "Gemini (LLM)",
   script: "Gemini (LLM)",
   scriptQA: "Gemini (LLM)",
-  narrationClean: "Gemini (LLM)",
   narrationAudioTags: "Gemini (LLM)",
   productionScript: "Gemini (LLM)",
   sceneImagePrompts: "Gemini (LLM)",

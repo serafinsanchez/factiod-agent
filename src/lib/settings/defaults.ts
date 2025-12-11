@@ -37,7 +37,6 @@ export const DEFAULT_SCRIPT_AUDIO_SETTINGS: ScriptAudioSettings = {
   promptQuizzes: getPromptByStepId("quizzes"),
   promptScript: getPromptByStepId("script"),
   promptScriptQA: getPromptByStepId("scriptQA"),
-  promptNarrationClean: getPromptByStepId("narrationClean"),
   promptNarrationAudioTags: getPromptByStepId("narrationAudioTags"),
 };
 

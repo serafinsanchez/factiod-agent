@@ -5,6 +5,7 @@ import type { HistoryProject, PipelineState, VisualStyleId } from "@/types/agent
 import { getOrCreateProjectSlug, getPublicProjectFileUrl } from "@/lib/projects";
 import {
   createInitialPipeline,
+  createCacheBustedUrl,
   ensureSessionTotals,
   ensureCumulativeTotals,
   isPipelineState,
@@ -38,6 +39,8 @@ type UseProjectHistoryOptions = {
   setThumbnailGenerationTime: React.Dispatch<React.SetStateAction<number | null>>;
   setThumbnailError: React.Dispatch<React.SetStateAction<string | null>>;
   setThumbnailMetrics: React.Dispatch<React.SetStateAction<null>>;
+  /** Preferred visual style for new projects when none is provided */
+  defaultVisualStyleId?: VisualStyleId;
 };
 
 export function useProjectHistory({
@@ -51,6 +54,7 @@ export function useProjectHistory({
   setThumbnailGenerationTime,
   setThumbnailError,
   setThumbnailMetrics,
+  defaultVisualStyleId,
 }: UseProjectHistoryOptions) {
   const [historyProjects, setHistoryProjects] = useState<HistoryProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -85,7 +89,7 @@ export function useProjectHistory({
   }, []);
 
   const newProject = useCallback((visualStyleId?: VisualStyleId) => {
-    setPipeline(() => createInitialPipeline(visualStyleId));
+    setPipeline(() => createInitialPipeline(visualStyleId ?? defaultVisualStyleId));
     setPromptOverrides({});
     setSelectedProjectId(null);
     setSaveError(null);
@@ -104,6 +108,7 @@ export function useProjectHistory({
     setThumbnailError(null);
     setThumbnailMetrics(null);
   }, [
+    defaultVisualStyleId,
     setPipeline,
     setPromptOverrides,
     setScriptAudioUrl,
@@ -207,11 +212,12 @@ export function useProjectHistory({
         ),
       );
       const audioUrl = getPublicProjectFileUrl(loadedPipeline.audioPath);
+      const versionedAudioUrl = createCacheBustedUrl(audioUrl);
       setScriptAudioUrl((prevUrl) => {
         if (prevUrl && prevUrl.startsWith("blob:")) {
           URL.revokeObjectURL(prevUrl);
         }
-        return audioUrl ?? null;
+        return versionedAudioUrl ?? null;
       });
       setScriptAudioError(null);
 

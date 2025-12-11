@@ -112,6 +112,7 @@ export function useAutoSave({
           
           const localHasMoreProgress = 
             prevStep.status === "success" ||
+            prevStep.status === "stale" ||
             prevStep.status === "error" ||
             (prevStep.status === "running" && serverStep?.status === "idle") ||
             (prevStep.responseText && !serverStep?.responseText) ||

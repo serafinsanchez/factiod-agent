@@ -71,10 +71,9 @@ export function StepEditor({
 
   const isScriptQaStep = stepConfig.id === "scriptQA";
   const isScriptStep = stepConfig.id === "script";
-  const isNarrationCleanStep = stepConfig.id === "narrationClean";
   const isNarrationAudioTagsStep = stepConfig.id === "narrationAudioTags";
   const isNarrationTimestampsStep = stepConfig.id === "narrationTimestamps";
-  const isNarrationStep = isNarrationCleanStep || isNarrationAudioTagsStep;
+  const isNarrationStep = isNarrationAudioTagsStep;
   
   // Format narrationTimestamps step to show only scene-level timestamps
   const formattedResponseText = useMemo(() => {
@@ -134,11 +133,9 @@ export function StepEditor({
     finalScriptPreview ??
     "No QA-improved script yet. Run the Script + Script QA steps to populate this preview.";
   const stepResponseText = stepState.responseText?.trim() ?? "";
-  const stepResultModalTitle = isNarrationCleanStep
-    ? "Cleaned narration"
-    : isNarrationAudioTagsStep
-      ? "Narration with audio tags"
-      : "Step result";
+  const stepResultModalTitle = isNarrationAudioTagsStep
+    ? "Narration with audio tags"
+    : "Step result";
   const stepResultViewLabel =
     isScriptStep || isNarrationStep ? "View full script" : "View full result";
   const stepResultCopyLabel =
@@ -159,6 +156,8 @@ export function StepEditor({
     "border-zinc-900 bg-zinc-950/70 shadow-[0_25px_80px_-60px_rgba(0,0,0,0.9)] backdrop-blur",
     stepState.status === "running" &&
       "border-white/40 ring-1 ring-white/30 shadow-white/5",
+    stepState.status === "stale" &&
+      "border-amber-500/40 ring-1 ring-amber-400/30 shadow-amber-500/10",
     stepState.status === "error" &&
       "border-rose-500/40 ring-1 ring-rose-400/30 shadow-rose-500/10",
     stepState.status === "success" &&
@@ -221,6 +220,15 @@ export function StepEditor({
         aria-hidden={isCollapsed}
         className={cn("space-y-6 py-6", isCollapsed && "hidden")}
       >
+        {stepState.status === "stale" && (
+          <div
+            role="status"
+            className="rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+          >
+            This step is out of date. Re-run it to apply the latest visual style changes.
+          </div>
+        )}
+
         {stepState.status === "error" && (
           <div
             role="alert"

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { STEP_CONFIGS } from "@/lib/agent/steps";
 import { DEFAULT_MODEL_ID } from "@/lib/llm/models";
 import { slugifyTopic } from "@/lib/slug";
+import { toNarrationOnly } from "@/lib/tts/cleanNarration";
 import {
   alignScenesToTimestamps,
   getAlignmentStats,
@@ -61,6 +62,7 @@ import { useThumbnailGeneration } from "./pipeline/use-thumbnail-generation";
 import { useSceneImages } from "./pipeline/use-scene-images";
 import { useSceneVideos } from "./pipeline/use-scene-videos";
 import { useVideoAssembly } from "./pipeline/use-video-assembly";
+import { useSettings } from "./use-settings";
 
 export function useAgentPipeline() {
   // ============================================
@@ -74,6 +76,11 @@ export function useAgentPipeline() {
   useEffect(() => {
     pipelineRef.current = pipeline;
   }, [pipeline]);
+
+  // ============================================
+  // Settings (used for sensible defaults)
+  // ============================================
+  const imagerySettings = useSettings("imagery");
 
   // ============================================
   // Timestamps state
@@ -104,6 +111,7 @@ export function useAgentPipeline() {
     setThumbnailGenerationTime: (val) => thumbnailGen.setThumbnailGenerationTime?.(val),
     setThumbnailError: (val) => thumbnailGen.setThumbnailError?.(val),
     setThumbnailMetrics: () => thumbnailGen.setThumbnailMetrics?.(null),
+    defaultVisualStyleId: imagerySettings.data?.defaultVisualStyle,
   });
 
   // Auto-save
@@ -256,14 +264,25 @@ export function useAgentPipeline() {
   // Sync audio URL from pipeline.audioPath
   useEffect(() => {
     if (!pipeline.audioPath) return;
+    // Important: `audioPath` is set before the MP3 upload finishes.
+    // If we bind the <audio> player to the public storage URL too early,
+    // the browser may cache a 404/empty response and require a second click.
+    if (narrationAudio.isGeneratingScriptAudio) return;
+    if (pipeline.steps?.narrationAudio?.status === "running") return;
     const publicUrl = getPublicProjectFileUrl(pipeline.audioPath);
     if (!publicUrl) return;
+    const versionedUrl = createCacheBustedUrl(publicUrl);
+    if (!versionedUrl) return;
     narrationAudio.setScriptAudioUrl((current: string | null) => {
       if (current && current.startsWith("blob:")) return current;
-      if (current === publicUrl) return current;
-      return publicUrl;
+      if (current === versionedUrl) return current;
+      return versionedUrl;
     });
-  }, [pipeline.audioPath]);
+  }, [
+    pipeline.audioPath,
+    pipeline.steps?.narrationAudio?.status,
+    narrationAudio.isGeneratingScriptAudio,
+  ]);
 
   // Sync thumbnail from pipeline.thumbnailPath
   useEffect(() => {
@@ -314,6 +333,79 @@ export function useAgentPipeline() {
       return { ...prev, scenePreviewLimit: normalized };
     });
   }, []);
+
+  const setVisualStyle = useCallback(
+    (styleId: VisualStyleId) => {
+      const styleDependentSteps: StepId[] = [
+        "productionScript",
+        "characterReferenceImage",
+        "sceneImagePrompts",
+        "sceneImages",
+        "sceneVideoPrompts",
+        "sceneVideos",
+        "videoAssembly",
+      ];
+
+      setPipeline((prev) => {
+        const currentStyle = prev.visualStyleId;
+        if (currentStyle === styleId) {
+          return prev;
+        }
+
+        const nextSteps = { ...prev.steps };
+
+        const hasStyleOutputsForStep = (stepId: StepId): boolean => {
+          switch (stepId) {
+            case "productionScript":
+              return Boolean(prev.productionScript);
+            case "characterReferenceImage":
+              return Boolean(prev.characterReferenceImage);
+            case "sceneImagePrompts":
+              return Boolean(
+                prev.sceneAssets?.some((s) => Boolean(s.imagePrompt || s.lastFrameImagePrompt)),
+              );
+            case "sceneImages":
+              return Boolean(
+                prev.sceneAssets?.some((s) => Boolean(s.imageUrl || s.lastFrameImageUrl)),
+              );
+            case "sceneVideoPrompts":
+              return Boolean(prev.sceneAssets?.some((s) => Boolean(s.videoPrompt)));
+            case "sceneVideos":
+              return Boolean(prev.sceneAssets?.some((s) => Boolean(s.videoUrl)));
+            case "videoAssembly":
+              return Boolean(prev.finalVideoPath);
+            default:
+              return false;
+          }
+        };
+
+        for (const stepId of styleDependentSteps) {
+          const step = nextSteps[stepId];
+          if (!step) continue;
+          // Mark as stale only if it previously produced outputs (keep errors/runs as-is).
+          const shouldMarkStale = step.status === "success" || step.status === "stale" || hasStyleOutputsForStep(stepId);
+          if (shouldMarkStale && step.status !== "running" && step.status !== "error") {
+            nextSteps[stepId] = {
+              ...step,
+              status: "stale" as const,
+              errorMessage: undefined,
+            };
+          }
+        }
+
+        const nextPipeline: PipelineState = {
+          ...prev,
+          visualStyleId: styleId,
+          steps: nextSteps,
+        };
+        pipelineRef.current = nextPipeline;
+        return nextPipeline;
+      });
+
+      autoSave.queueAutoSave();
+    },
+    [autoSave.queueAutoSave],
+  );
 
   const setPromptOverride = useCallback((stepId: StepId, template: string) => {
     setPromptOverrides((prev) => ({ ...prev, [stepId]: template }));
@@ -727,6 +819,18 @@ export function useAgentPipeline() {
         const producedVariables: Record<string, string> = data.producedVariables ?? {};
 
         setPipeline((prev) => {
+          const prevVideoScript =
+            typeof prev.videoScript === "string" ? prev.videoScript : "";
+          const prevNarrationScript =
+            typeof prev.narrationScript === "string" ? prev.narrationScript : "";
+          const prevDerivedNarration = prevVideoScript
+            ? toNarrationOnly(prevVideoScript)
+            : "";
+          const shouldAutoUpdateNarrationScript =
+            prevNarrationScript.trim().length === 0 ||
+            (prevVideoScript.trim().length > 0 &&
+              prevNarrationScript.trim() === prevDerivedNarration.trim());
+
           const updatedSteps = {
             ...prev.steps,
             [stepId]: {
@@ -885,6 +989,14 @@ export function useAgentPipeline() {
               if (field) {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 (nextPipeline as any)[field] = value;
+              }
+
+              if (
+                key === "VideoScript" &&
+                typeof value === "string" &&
+                shouldAutoUpdateNarrationScript
+              ) {
+                nextPipeline.narrationScript = toNarrationOnly(value);
               }
             }
           }
@@ -1129,6 +1241,7 @@ export function useAgentPipeline() {
       setModel,
       setNarrationModel,
       setScenePreviewLimit,
+      setVisualStyle,
       setPromptOverride,
       runStep,
       runAll,

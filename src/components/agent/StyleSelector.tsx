@@ -17,6 +17,18 @@ interface StyleSelectorProps {
   isOpen: boolean;
   onSelect: (styleId: VisualStyleId) => void;
   onClose: () => void;
+  /** When opening, preselect this style (defaults to app default). */
+  initialStyleId?: VisualStyleId;
+  /** Small uppercase label shown above the title (defaults to \"New Project\"). */
+  contextLabel?: string;
+  /** Modal title (defaults to \"Choose a Visual Style\"). */
+  title?: string;
+  /** Modal description (defaults to existing text). */
+  description?: string;
+  /** Confirm button label (defaults to \"Create Project\"). */
+  confirmLabel?: string;
+  /** Footer hint text (defaults to existing text). */
+  footerText?: string;
 }
 
 const STYLE_ICONS: Record<VisualStyleId, React.ReactNode> = {
@@ -125,8 +137,20 @@ function StyleCard({
   );
 }
 
-export function StyleSelector({ isOpen, onSelect, onClose }: StyleSelectorProps) {
-  const [selectedStyle, setSelectedStyle] = useState<VisualStyleId>(DEFAULT_VISUAL_STYLE_ID);
+export function StyleSelector({
+  isOpen,
+  onSelect,
+  onClose,
+  initialStyleId,
+  contextLabel = "New Project",
+  title = "Choose a Visual Style",
+  description = "Select the visual aesthetic for your video. This affects how scenes are generated throughout the pipeline.",
+  confirmLabel = "Create Project",
+  footerText = "You can change this later in project settings.",
+}: StyleSelectorProps) {
+  const [selectedStyle, setSelectedStyle] = useState<VisualStyleId>(
+    initialStyleId ?? DEFAULT_VISUAL_STYLE_ID,
+  );
   const isBrowser = typeof document !== "undefined";
 
   useEffect(() => {
@@ -157,13 +181,13 @@ export function StyleSelector({ isOpen, onSelect, onClose }: StyleSelectorProps)
           {/* Header */}
           <div className="border-b border-white/5 px-8 py-6">
             <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-              New Project
+              {contextLabel}
             </p>
             <h2 className="mt-1 text-2xl font-semibold text-white">
-              Choose a Visual Style
+              {title}
             </h2>
             <p className="mt-2 text-sm text-zinc-400">
-              Select the visual aesthetic for your video. This affects how scenes are generated throughout the pipeline.
+              {description}
             </p>
           </div>
 
@@ -184,7 +208,7 @@ export function StyleSelector({ isOpen, onSelect, onClose }: StyleSelectorProps)
           {/* Footer */}
           <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/5 px-8 py-5">
             <p className="text-xs text-zinc-500">
-              You can change this later in project settings.
+              {footerText}
             </p>
             <div className="flex gap-3">
               <Button
@@ -200,7 +224,7 @@ export function StyleSelector({ isOpen, onSelect, onClose }: StyleSelectorProps)
                 className="rounded-full bg-white px-6 text-sm font-semibold text-zinc-900 hover:bg-zinc-200"
                 onClick={handleConfirm}
               >
-                Create Project
+                {confirmLabel}
               </Button>
             </div>
           </div>

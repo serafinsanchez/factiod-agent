@@ -184,12 +184,12 @@ The code assumes these paths when saving assets and when reconstructing URLs for
 
 ## Narration Post-processing
 
-The pipeline automatically performs two hidden clean-up steps after the main script is generated:
+The pipeline automatically prepares narration text for ElevenLabs after the main script is generated:
 
-- **Narration Cleaner** removes any stage directions or production notes so ElevenLabs only receives spoken lines.
-- **Narration Audio Tags** enriches the cleaned narration with ElevenLabs v3 audio tags (e.g., `[whispers]`, `[laughs]`, `[sighs]`) without changing the underlying words. Tags appear directly inside the final `NarrationScript`, so exporting or generating TTS audio will include the expressive cues automatically.
+- **Narration cleaning** is applied automatically so ElevenLabs only receives spoken lines (stage directions / production notes are removed).
+- **Narration Audio Tags** enriches the narration with ElevenLabs v3 audio tags (e.g., `[whispers]`, `[laughs]`, `[sighs]`) without changing the underlying words. Tags appear directly inside the final `NarrationScript`, so exporting or generating TTS audio will include the expressive cues automatically.
 
-No additional configuration is required—complete a normal run of the `script` step (or click **Run All**) and the hidden narration steps fire sequentially. If an enhancement step ever fails, its status is surfaced in the UI so you can retry once your script is ready.
+No additional configuration is required—complete a normal run of the Script + Script QA steps (or click **Run All**) and the narration script becomes available for tagging + voice generation.
 
 ## Learn More
 

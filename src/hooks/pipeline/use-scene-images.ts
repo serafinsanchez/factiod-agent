@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import type { PipelineState, SceneAsset, VideoFrameMode } from "@/types/agent";
 import { getOrCreateProjectSlug, getPublicProjectFileUrl } from "@/lib/projects";
 import { slugifyTopic } from "@/lib/slug";
+import { styleRequiresCharacterReference } from "@/lib/agent/visual-styles";
 import { type ProgressState, ensureStepState } from "./pipeline-types";
 
 type UseSceneImagesOptions = {
@@ -113,7 +114,12 @@ export function useSceneImages({
         setSceneImagesProgress({ completed: completedImages, total: totalImages });
 
         try {
-          const characterReferenceImage = pipelineRef.current.characterReferenceImage;
+          const currentStyleId = pipelineRef.current.visualStyleId;
+          const shouldUseReferenceImage = styleRequiresCharacterReference(currentStyleId);
+          const referenceImage =
+            shouldUseReferenceImage && typeof pipelineRef.current.characterReferenceImage === "string"
+              ? pipelineRef.current.characterReferenceImage
+              : undefined;
           
           // Generate FIRST FRAME image
           const firstFrameRes = await fetch("/api/gemini/generate-image", {
@@ -124,8 +130,8 @@ export function useSceneImages({
               projectSlug,
               thumbnailPath: `projects/${projectSlug}/scene-${scene.sceneNumber}-first.png`,
               skipTextOverlay: true,
-              referenceImage: characterReferenceImage,
-              styleId: pipelineRef.current.visualStyleId,
+              referenceImage,
+              styleId: currentStyleId,
             }),
           });
 
@@ -174,8 +180,8 @@ export function useSceneImages({
                 projectSlug,
                 thumbnailPath: `projects/${projectSlug}/scene-${scene.sceneNumber}-last.png`,
                 skipTextOverlay: true,
-                referenceImage: characterReferenceImage,
-                styleId: pipelineRef.current.visualStyleId,
+                referenceImage,
+                styleId: currentStyleId,
               }),
             });
 
@@ -328,7 +334,12 @@ export function useSceneImages({
       });
 
       try {
-        const characterReferenceImage = currentPipeline.characterReferenceImage;
+        const currentStyleId = currentPipeline.visualStyleId;
+        const shouldUseReferenceImage = styleRequiresCharacterReference(currentStyleId);
+        const referenceImage =
+          shouldUseReferenceImage && typeof currentPipeline.characterReferenceImage === "string"
+            ? currentPipeline.characterReferenceImage
+            : undefined;
         const thumbnailPath = frameKind === "last"
           ? `projects/${projectSlug}/scene-${sceneNumber}-last.png`
           : `projects/${projectSlug}/scene-${sceneNumber}.png`;
@@ -341,8 +352,8 @@ export function useSceneImages({
             projectSlug,
             thumbnailPath,
             skipTextOverlay: true,
-            referenceImage: characterReferenceImage,
-            styleId: currentPipeline.visualStyleId,
+            referenceImage,
+            styleId: currentStyleId,
           }),
         });
 

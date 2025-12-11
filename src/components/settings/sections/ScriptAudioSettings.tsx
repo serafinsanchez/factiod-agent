@@ -181,13 +181,6 @@ export function ScriptAudioSettings() {
               onChange: (value) => updateField("promptScriptQA", value),
             },
             {
-              id: "narrationClean",
-              title: "Narration Cleaner",
-              description: "Remove stage directions from script",
-              value: settings.promptNarrationClean,
-              onChange: (value) => updateField("promptNarrationClean", value),
-            },
-            {
               id: "narrationAudioTags",
               title: "Narration Audio Tags",
               description: "Add ElevenLabs voice tags",

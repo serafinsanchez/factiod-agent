@@ -130,45 +130,53 @@ export function useThumbnailGeneration({
         costUsd: reportedCostUsd,
       });
 
-      setPipeline((prev) => {
-        const thumbnailStepMetrics: StepRunMetrics = {
-          inputTokens: usageInputTokens ?? 0,
-          outputTokens: usageOutputTokens ?? 0,
-          totalTokens:
-            usageTotalTokens ?? usageInputTokens ?? usageOutputTokens ?? 0,
-          costUsd: reportedCostUsd ?? 0,
-          durationMs,
-        };
-        const nextSteps = {
-          ...prev.steps,
-          thumbnailGenerate: {
-            ...ensureStepState(prev.steps, "thumbnailGenerate"),
-            resolvedPrompt: prompt,
-            responseText: versionedUrl ?? data.thumbnailPath ?? "",
-            status: "success" as const,
-            metrics: thumbnailStepMetrics,
-            errorMessage: undefined,
-          },
-        };
-        const totals = calculateStepTotals(nextSteps);
-        const nextPipeline: PipelineState = {
-          ...prev,
-          steps: nextSteps,
-          totalTokens: totals.totalTokens,
-          totalCostUsd: totals.totalCostUsd,
-        };
-        const sessionTotals = getAccumulatedSessionTotals(prev, thumbnailStepMetrics);
-        nextPipeline.sessionTotalTokens = sessionTotals.sessionTotalTokens;
-        nextPipeline.sessionTotalCostUsd = sessionTotals.sessionTotalCostUsd;
-        nextPipeline.cumulativeTokens = sessionTotals.cumulativeTokens;
-        nextPipeline.cumulativeCostUsd = sessionTotals.cumulativeCostUsd;
-        if (typeof storagePath === "string" && storagePath.trim().length > 0) {
-          nextPipeline.thumbnailPath = storagePath;
-        }
-        pipelineRef.current = nextPipeline;
-        return nextPipeline;
-      });
+      // IMPORTANT: Update pipelineRef.current BEFORE queueAutoSave() runs.
+      // queueAutoSave reads pipelineRef.current; if we only update it inside a
+      // React state updater, React may batch/defer execution and we can race.
+      const basePipeline = pipelineRef.current;
+      const thumbnailStepMetrics: StepRunMetrics = {
+        inputTokens: usageInputTokens ?? 0,
+        outputTokens: usageOutputTokens ?? 0,
+        totalTokens:
+          usageTotalTokens ?? usageInputTokens ?? usageOutputTokens ?? 0,
+        costUsd: reportedCostUsd ?? 0,
+        durationMs,
+      };
+      const nextSteps = {
+        ...basePipeline.steps,
+        thumbnailGenerate: {
+          ...ensureStepState(basePipeline.steps, "thumbnailGenerate"),
+          resolvedPrompt: prompt,
+          responseText: versionedUrl ?? data.thumbnailPath ?? "",
+          status: "success" as const,
+          metrics: thumbnailStepMetrics,
+          errorMessage: undefined,
+        },
+      };
+      const totals = calculateStepTotals(nextSteps);
+      const sessionTotals = getAccumulatedSessionTotals(
+        basePipeline,
+        thumbnailStepMetrics,
+      );
+      const nextPipeline: PipelineState = {
+        ...basePipeline,
+        projectSlug,
+        steps: nextSteps,
+        totalTokens: totals.totalTokens,
+        totalCostUsd: totals.totalCostUsd,
+        sessionTotalTokens: sessionTotals.sessionTotalTokens,
+        sessionTotalCostUsd: sessionTotals.sessionTotalCostUsd,
+        cumulativeTokens: sessionTotals.cumulativeTokens,
+        cumulativeCostUsd: sessionTotals.cumulativeCostUsd,
+      };
 
+      // Only overwrite thumbnailPath if we successfully uploaded to storage.
+      if (typeof storagePath === "string" && storagePath.trim().length > 0) {
+        nextPipeline.thumbnailPath = storagePath;
+      }
+
+      pipelineRef.current = nextPipeline;
+      setPipeline(nextPipeline);
       queueAutoSave();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";

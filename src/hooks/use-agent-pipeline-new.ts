@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { STEP_CONFIGS } from "@/lib/agent/steps";
 import { DEFAULT_MODEL_ID } from "@/lib/llm/models";
 import { slugifyTopic } from "@/lib/slug";
+import { toNarrationOnly } from "@/lib/tts/cleanNarration";
 import {
   alignScenesToTimestamps,
   getAlignmentStats,
@@ -257,14 +258,25 @@ export function useAgentPipeline() {
   // Sync audio URL from pipeline.audioPath
   useEffect(() => {
     if (!pipeline.audioPath) return;
+    // Important: `audioPath` is set before the MP3 upload finishes.
+    // If we bind the <audio> player to the public storage URL too early,
+    // the browser may cache a 404/empty response and require a second click.
+    if (narrationAudio.isGeneratingScriptAudio) return;
+    if (pipeline.steps?.narrationAudio?.status === "running") return;
     const publicUrl = getPublicProjectFileUrl(pipeline.audioPath);
     if (!publicUrl) return;
+    const versionedUrl = createCacheBustedUrl(publicUrl);
+    if (!versionedUrl) return;
     narrationAudio.setScriptAudioUrl((current: string | null) => {
       if (current && current.startsWith("blob:")) return current;
-      if (current === publicUrl) return current;
-      return publicUrl;
+      if (current === versionedUrl) return current;
+      return versionedUrl;
     });
-  }, [pipeline.audioPath]);
+  }, [
+    pipeline.audioPath,
+    pipeline.steps?.narrationAudio?.status,
+    narrationAudio.isGeneratingScriptAudio,
+  ]);
 
   // Sync thumbnail from pipeline.thumbnailPath
   useEffect(() => {
@@ -728,6 +740,18 @@ export function useAgentPipeline() {
         const producedVariables: Record<string, string> = data.producedVariables ?? {};
 
         setPipeline((prev) => {
+          const prevVideoScript =
+            typeof prev.videoScript === "string" ? prev.videoScript : "";
+          const prevNarrationScript =
+            typeof prev.narrationScript === "string" ? prev.narrationScript : "";
+          const prevDerivedNarration = prevVideoScript
+            ? toNarrationOnly(prevVideoScript)
+            : "";
+          const shouldAutoUpdateNarrationScript =
+            prevNarrationScript.trim().length === 0 ||
+            (prevVideoScript.trim().length > 0 &&
+              prevNarrationScript.trim() === prevDerivedNarration.trim());
+
           const updatedSteps = {
             ...prev.steps,
             [stepId]: {
@@ -930,6 +954,14 @@ export function useAgentPipeline() {
               if (field) {
                 (nextPipeline as unknown as Record<keyof PipelineState, PipelineState[keyof PipelineState]>)[field] =
                   value as PipelineState[typeof field];
+              }
+
+              if (
+                key === "VideoScript" &&
+                typeof value === "string" &&
+                shouldAutoUpdateNarrationScript
+              ) {
+                nextPipeline.narrationScript = toNarrationOnly(value);
               }
             }
           }

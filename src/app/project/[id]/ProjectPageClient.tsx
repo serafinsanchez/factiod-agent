@@ -6,7 +6,6 @@ import { useParams, useSearchParams } from "next/navigation";
 import { AgentShell } from "@/components/agent/AgentShell";
 import type { StageDefinition, StageId } from "@/components/agent/stage-config";
 import { useAgentPipeline } from "@/hooks/use-agent-pipeline";
-import type { VisualStyleId } from "@/types/agent";
 
 type ProjectPageClientProps = {
   stages: StageDefinition[];
@@ -19,7 +18,6 @@ export default function ProjectPageClient({ stages }: ProjectPageClientProps) {
   const [activeStageId, setActiveStageId] = useState<StageId>("scriptAudio");
   const initializedRef = useRef(false);
 
-  const styleId = searchParams.get("style") as VisualStyleId | null;
   const creatorName = searchParams.get("creator");
   const topic = searchParams.get("topic");
 
@@ -30,7 +28,7 @@ export default function ProjectPageClient({ stages }: ProjectPageClientProps) {
     initializedRef.current = true;
 
     if (projectId === "new") {
-      pipeline.actions.newProject(styleId ?? undefined);
+      pipeline.actions.newProject();
       if (creatorName) {
         pipeline.actions.setPipeline((prev) => ({ ...prev, creatorName }));
       }
@@ -41,7 +39,7 @@ export default function ProjectPageClient({ stages }: ProjectPageClientProps) {
     }
 
     pipeline.actions.selectProject(projectId);
-  }, [pipeline.actions, projectId, styleId, creatorName, topic]);
+  }, [pipeline.actions, projectId, creatorName, topic]);
 
   return (
     <AgentShell

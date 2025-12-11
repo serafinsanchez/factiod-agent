@@ -5,6 +5,7 @@ import { extractFinalScript, runScriptQaWithWordGoal } from '../../../../../lib/
 import { STEP_CONFIGS } from '../../../../../lib/agent/steps';
 import { interpolatePrompt } from '../../../../../lib/agent/interpolate';
 import { normalizeModelId } from '../../../../../lib/llm/models';
+import { toNarrationOnly } from '@/lib/tts/cleanNarration';
 import type {
   ModelId,
   PipelineState,
@@ -26,7 +27,6 @@ const STEP_IDS: StepId[] = [
   'quizzes',
   'script',
   'scriptQA',
-  'narrationClean',
   'narrationAudioTags',
   'titleDescription',
   'thumbnail',
@@ -156,8 +156,10 @@ async function runPipelineStep(
       Description: rest.join('\n').trim(),
     };
   } else if (step.id === 'scriptQA') {
+    const finalScript = extractFinalScript(result.responseText);
     producedVariables = {
-      VideoScript: extractFinalScript(result.responseText),
+      VideoScript: finalScript,
+      NarrationScript: toNarrationOnly(finalScript),
     };
   }
 

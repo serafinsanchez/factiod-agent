@@ -27,7 +27,6 @@ export type StepId =
   | 'quizzes'
   | 'script'
   | 'scriptQA'
-  | 'narrationClean'
   | 'narrationAudioTags'
   | 'narrationAudio'
   | 'narrationTimestamps'
@@ -84,7 +83,7 @@ export interface StepRunState {
   id: StepId;
   resolvedPrompt: string;
   responseText: string;
-  status: 'idle' | 'running' | 'success' | 'error';
+  status: 'idle' | 'running' | 'success' | 'error' | 'stale';
   errorMessage?: string;
   metrics?: StepRunMetrics;
 }
