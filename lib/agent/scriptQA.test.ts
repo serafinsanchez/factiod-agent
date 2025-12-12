@@ -76,6 +76,22 @@ describe('runScriptQaWithWordGoal', () => {
     vi.clearAllMocks();
   });
 
+  function makeScript(wordCount: number): string {
+    return Array.from({ length: Math.max(0, wordCount) }, () => 'word').join(' ');
+  }
+
+  function wrapQaResponse(finalScript: string): string {
+    return [
+      'Checklist:',
+      `LENGTH: ✅ Final word count: ${finalScript.split(/\s+/).filter(Boolean).length.toLocaleString()} words.`,
+      'FACTS: ✅ All numbers verified.',
+      'TONE: ✅ Warm and curious.',
+      '',
+      'Final Script:',
+      finalScript,
+    ].join('\n');
+  }
+
   it('stores only the cleaned final script in produced variables', async () => {
     const qaResponse = [
       'Checklist:',
@@ -120,6 +136,82 @@ describe('runScriptQaWithWordGoal', () => {
         'They are icy space travelers that grow shimmering tails near the Sun.',
       ].join('\n'),
     );
+  });
+
+  it('does not accept scripts over the cap when DefaultWordCount=1600', async () => {
+    const tooLongScript = makeScript(1_700);
+    const qaResponse = wrapQaResponse(tooLongScript);
+
+    mockRunStep.mockResolvedValue({
+      resolvedPrompt: 'prompt',
+      responseText: qaResponse,
+      metrics: {
+        inputTokens: 100,
+        outputTokens: 200,
+        totalTokens: 300,
+        costUsd: 0.12,
+        durationMs: 1500,
+      },
+      producedVariables: {
+        VideoScript: qaResponse,
+      },
+    });
+
+    const result = await runScriptQaWithWordGoal({
+      step: scriptQaStep,
+      model: 'gpt-test' as ModelId,
+      topic: 'Space',
+      variables: {
+        DefaultWordCount: '1600',
+        VideoScript: tooLongScript,
+      },
+    });
+
+    expect(mockRunStep).toHaveBeenCalledTimes(3);
+    expect(mockRunStep.mock.calls[0]?.[0]?.variables?.QA_HardWordCap).toBe('1600');
+    expect(mockRunStep.mock.calls[0]?.[0]?.variables?.QA_TargetWordMin).toBe('1350');
+    expect(mockRunStep.mock.calls[0]?.[0]?.variables?.QA_TargetWordMax).toBe('1500');
+
+    const finalWords = result.producedVariables.VideoScript.split(/\s+/).filter(Boolean).length;
+    expect(finalWords).toBeLessThanOrEqual(1_500);
+  });
+
+  it('accepts scripts up to the cap when DefaultWordCount=1800', async () => {
+    const script = makeScript(1_718);
+    const qaResponse = wrapQaResponse(script);
+
+    mockRunStep.mockResolvedValueOnce({
+      resolvedPrompt: 'prompt',
+      responseText: qaResponse,
+      metrics: {
+        inputTokens: 100,
+        outputTokens: 200,
+        totalTokens: 300,
+        costUsd: 0.12,
+        durationMs: 1500,
+      },
+      producedVariables: {
+        VideoScript: qaResponse,
+      },
+    });
+
+    const result = await runScriptQaWithWordGoal({
+      step: scriptQaStep,
+      model: 'gpt-test' as ModelId,
+      topic: 'Space',
+      variables: {
+        DefaultWordCount: '1800',
+        VideoScript: script,
+      },
+    });
+
+    expect(mockRunStep).toHaveBeenCalledTimes(1);
+    expect(mockRunStep.mock.calls[0]?.[0]?.variables?.QA_HardWordCap).toBe('1800');
+    expect(mockRunStep.mock.calls[0]?.[0]?.variables?.QA_TargetWordMin).toBe('1530');
+    expect(mockRunStep.mock.calls[0]?.[0]?.variables?.QA_TargetWordMax).toBe('1700');
+
+    const finalWords = result.producedVariables.VideoScript.split(/\s+/).filter(Boolean).length;
+    expect(finalWords).toBe(1_718);
   });
 });
 

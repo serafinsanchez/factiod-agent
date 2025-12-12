@@ -13,6 +13,13 @@ export type NarrationModelId = 'eleven_v3' | 'eleven_multilingual_v2';
 export type VisualStyleId = 'pixar-3d' | 'paper-craft' | 'documentary';
 
 /**
+ * Audience mode for prompt tuning.
+ * - 'forKids': explicitly kid-targeted tone (current default).
+ * - 'forEveryone': family-friendly content suitable for kids, teens, and adults.
+ */
+export type AudienceMode = 'forKids' | 'forEveryone';
+
+/**
  * Video frame generation mode.
  * - 'flf2v': First-Last-Frame-to-Video - generates both first and last frame images,
  *   WAN 2.2 interpolates between them for smoother, more controlled motion.
@@ -92,6 +99,8 @@ export interface PipelineState {
   topic: string;
   /** Optional creator label for display in project lists */
   creatorName?: string | null;
+  /** Prompt tuning preset for the project's content audience. */
+  audienceMode?: AudienceMode;
   keyConcepts?: string;
   hookScript?: string;
   quizInfo?: string;

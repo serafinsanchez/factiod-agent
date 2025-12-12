@@ -8,9 +8,9 @@ import { StageNavBar } from "./StageNavBar";
 import { StyleSelector } from "./StyleSelector";
 import { STAGES, type StageId } from "./stage-config";
 import type { UseAgentPipelineReturn } from "@/hooks/use-agent-pipeline";
-import { STEP_CONFIGS } from "@/lib/agent/steps";
+import { STEP_CONFIGS, getStepConfigs } from "@/lib/agent/steps";
 import { getVariableValueFromPipeline } from "@/lib/agent/variable-metadata";
-import type { StepId, VariableKey, VisualStyleId } from "@/types/agent";
+import type { AudienceMode, StepId, VariableKey, VisualStyleId } from "@/types/agent";
 import type { StageDefinition } from "./stage-config";
 
 type AgentShellProps = {
@@ -20,6 +20,8 @@ type AgentShellProps = {
   activeStageId: StageId;
   onStageChangeAction: (stageId: StageId) => void;
   stages?: StageDefinition[];
+  /** When true, open the create-project (style + audience) modal on mount. */
+  openCreateProjectModal?: boolean;
 };
 
 export function AgentShell({
@@ -29,9 +31,10 @@ export function AgentShell({
   activeStageId,
   onStageChangeAction,
   stages = STAGES,
+  openCreateProjectModal = false,
 }: AgentShellProps) {
   const [editingVariable, setEditingVariable] = useState<VariableKey | null>(null);
-  const [isStyleSelectorOpen, setIsStyleSelectorOpen] = useState(false);
+  const [isStyleSelectorOpen, setIsStyleSelectorOpen] = useState(openCreateProjectModal);
   const [collapsedSteps, setCollapsedSteps] = useState<Record<StepId, boolean>>(() => {
     const initial: Record<StepId, boolean> = {} as Record<StepId, boolean>;
     STEP_CONFIGS.forEach((config) => {
@@ -57,9 +60,21 @@ export function AgentShell({
     return map;
   }, [stages]);
 
-  const handleStyleSelected = (styleId: VisualStyleId) => {
+  const stepConfigs = useMemo(
+    () => getStepConfigs(state.pipeline.audienceMode ?? "forKids"),
+    [state.pipeline.audienceMode],
+  );
+
+  const handleStyleSelected = (_styleId: VisualStyleId, audienceMode: AudienceMode) => {
     setIsStyleSelectorOpen(false);
-    actions.newProject(styleId);
+    const seedTopic = state.pipeline.topic;
+    const seedCreatorName = state.pipeline.creatorName ?? "";
+    actions.newProject(undefined, audienceMode);
+    actions.setPipeline((prev) => ({
+      ...prev,
+      topic: seedTopic,
+      creatorName: seedCreatorName,
+    }));
     onStageChangeAction("scriptAudio");
   };
 
@@ -110,7 +125,7 @@ export function AgentShell({
             <StageView
               stages={stages}
               activeStageId={activeStageId}
-              stepConfigs={STEP_CONFIGS}
+              stepConfigs={stepConfigs}
               state={state}
               derived={derived}
               actions={actions}
@@ -136,8 +151,16 @@ export function AgentShell({
       />
 
       <StyleSelector
-        key={isStyleSelectorOpen ? "open" : "closed"}
+        key={`${isStyleSelectorOpen ? "open" : "closed"}:${state.pipeline.visualStyleId ?? "default"}:${state.pipeline.audienceMode ?? "forKids"}`}
         isOpen={isStyleSelectorOpen}
+        initialStyleId={state.pipeline.visualStyleId ?? undefined}
+        initialAudienceMode={state.pipeline.audienceMode ?? "forKids"}
+        showVisualStyle={false}
+        contextLabel="New Project"
+        title="Choose an audience"
+        description="Pick the tone and complexity. Visual style uses your Settings default (changeable later in Timing + Story)."
+        confirmLabel="Create project"
+        footerText="You can change audience on the next project; style can be changed later in Timing + Story."
         onSelect={handleStyleSelected}
         onClose={() => setIsStyleSelectorOpen(false)}
       />

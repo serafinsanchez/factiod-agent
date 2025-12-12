@@ -8,8 +8,9 @@ import {
   buildProjectThumbnailPath,
 } from "@/lib/projects";
 import { TOKENS_PER_MILLION } from "@/lib/llm/costs";
-import { getVisualStylePreset } from "@/lib/agent/visual-styles";
-import type { VisualStyleId } from "@/types/agent";
+import { buildGeminiImagePrompt as buildGeminiImagePromptForKids, getVisualStylePreset } from "@/prompts";
+import { buildGeminiImagePrompt as buildGeminiImagePromptForEveryone } from "@/prompts/everyone/gemini-image.prompt";
+import type { AudienceMode, VisualStyleId } from "@/types/agent";
 
 const GEMINI_IMAGE_PRICE_PER_MILLION = 20;
 
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
       skipTextOverlay,
       referenceImage, // Optional base64 character reference image for consistency
       styleId, // Optional visual style ID for style-specific image generation
+      audienceMode, // Optional: 'forKids' | 'forEveryone' (affects thumbnail instructions)
     } = await request.json();
 
     if (!prompt || typeof prompt !== "string") {
@@ -43,62 +45,21 @@ export async function POST(request: Request) {
     // Get visual style preset for scene images
     const visualStyle = getVisualStylePreset(styleId as VisualStyleId | undefined);
 
-    // Build prompt lines conditionally based on whether text overlay is needed
-    // For scene images (skipTextOverlay=true), use the visual style's image prompt
-    // For thumbnails, use photoreal style
-    const promptLines = skipTextOverlay
-      ? [
-          // Use the visual style's image prompt for scene images
-          visualStyle.imageStylePrompt,
-          ...(referenceImage && visualStyle.requiresCharacterReference ? [
-            "CRITICAL - Character Consistency: A reference image is provided showing the exact character design. You MUST match this character's face, hair style, hair color, skin tone, outfit, and proportions EXACTLY in the new scene. The character should look identical to the reference."
-          ] : []),
-        ]
-      : [
-          // Photoreal style for thumbnails
-          "You are Gemini 3 Pro Image Preview generating a cinematic 16:9 YouTube thumbnail for curious kids ages 5-9.",
-          "Interpret the creative brief below and render a photoreal subject mid-action with expressive emotion.",
-          "Requirements:",
-          "- Subject & action: follow the brief, make the main character the focal point, capture motion.",
-          "- Environment: include context from the topic in the background with depth and storytelling props.",
-          "- Lighting & mood: bright, high-key rim light with soft diffusion; no harsh shadows.",
-          "- Color palette: saturated, complementary colors with clean whites and accurate skin tones.",
-        ];
+    const resolvedAudienceMode: AudienceMode =
+      audienceMode === "forEveryone" ? "forEveryone" : "forKids";
+    const buildGeminiImagePrompt =
+      resolvedAudienceMode === "forEveryone"
+        ? buildGeminiImagePromptForEveryone
+        : buildGeminiImagePromptForKids;
 
-    // Only add text overlay instruction for thumbnails, not scene images
-    if (!skipTextOverlay) {
-      promptLines.push(
-        "- Text overlay: add a bold, 2-3 word caption derived from the brief in the upper-left, high-contrast, legible."
-      );
-    }
+    const { structuredPrompt, contentParts } = buildGeminiImagePrompt({
+      creativeBrief: prompt,
+      skipTextOverlay,
+      visualStyle,
+      referenceImage,
+      variationTag,
+    });
 
-    promptLines.push(
-      "- Camera & composition: cinematic wide shot, shallow depth of field, rule-of-thirds framing, plenty of breathing room.",
-      skipTextOverlay
-        ? "- Safety & negatives: kid-safe, no gore, no weapons, no logos, no creepy vibes, absolutely NO text, captions, labels, or words anywhere in the image."
-        : "- Safety & negatives: kid-safe, no gore, no weapons, no extra logos, no creepy vibes, no additional text beyond the overlay.",
-      `- Variation tag: ${variationTag}. Treat this tag as a randomness source so every run looks different, but never draw or print it.`,
-      "Creative brief:",
-      `\"\"\"${prompt}\"\"\"`
-    );
-
-    const structuredPrompt = promptLines.join("\n");
-    
-    // Build content parts - include reference image if provided
-    const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
-      { text: structuredPrompt },
-    ];
-    
-    // Add reference image for character consistency if provided
-    if (referenceImage && typeof referenceImage === "string") {
-      contentParts.push({
-        inlineData: {
-          mimeType: "image/png",
-          data: referenceImage,
-        },
-      });
-    }
-    
     const promptContent = [
       {
         role: "user",

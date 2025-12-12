@@ -49,6 +49,7 @@ export default function ProjectPageClient({ stages }: ProjectPageClientProps) {
       stages={stages}
       activeStageId={activeStageId}
       onStageChangeAction={setActiveStageId}
+      openCreateProjectModal={projectId === "new"}
     />
   );
 }

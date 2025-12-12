@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { slugifyTopic } from "@/lib/slug";
 import type { StepConfig, StepId, VariableKey, SceneAsset, VideoFrameMode, VisualStyleId } from "@/types/agent";
 import { ChevronDown, Download, PenLine, RefreshCw, X } from "lucide-react";
-import { getVisualStylePreset } from "@/lib/agent/visual-styles";
+import { getVisualStylePreset } from "@/prompts/visual-styles";
 
 import { OutputPreview } from "./OutputPreview";
 import { StepEditor } from "./StepEditor";
@@ -698,6 +698,7 @@ function ProductionScriptStep({
         key={isStyleSelectorOpen ? "open" : "closed"}
         isOpen={isStyleSelectorOpen}
         initialStyleId={currentStylePreset.id}
+        showAudienceMode={false}
         contextLabel="Timing + Story"
         title="Choose a visual style"
         description="This affects the production script and all scene generation downstream."

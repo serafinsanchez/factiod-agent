@@ -13,6 +13,7 @@ import {
 import { getFramesForDuration } from "@/lib/video/fal-client";
 import { getOrCreateProjectSlug, getPublicProjectFileUrl } from "@/lib/projects";
 import type {
+  AudienceMode,
   ModelId,
   NarrationModelId,
   PipelineState,
@@ -24,6 +25,7 @@ import type {
   VideoFrameMode,
   VisualStyleId,
 } from "@/types/agent";
+import { getPromptByAudience } from "@/prompts/audience-prompts";
 import {
   styleRequiresCharacterReference,
   getProductionScriptStyleSections,
@@ -33,7 +35,7 @@ import {
   getVideoFrameModeImageRules,
   getVideoFrameModeVideoTask,
   getVideoFrameModeVideoRules,
-} from "@/lib/agent/visual-styles";
+} from "@/prompts/visual-styles";
 import {
   VARIABLE_KEY_TO_PIPELINE_FIELD,
   hasVariableValue,
@@ -63,6 +65,30 @@ import { useThumbnailGeneration } from "./pipeline/use-thumbnail-generation";
 import { useSceneImages } from "./pipeline/use-scene-images";
 import { useSceneVideos } from "./pipeline/use-scene-videos";
 import { useVideoAssembly } from "./pipeline/use-video-assembly";
+
+const AUDIENCE_OVERRIDDEN_STEP_IDS: ReadonlySet<StepId> = new Set<StepId>([
+  "keyConcepts",
+  "hook",
+  "quizzes",
+  "script",
+  "scriptQA",
+  "narrationAudioTags",
+  "productionScript",
+  "sceneImagePrompts",
+  "titleDescription",
+  "thumbnail",
+]);
+
+const RUN_ALL_OVERRIDE_STEP_IDS: ReadonlySet<StepId> = new Set<StepId>([
+  "keyConcepts",
+  "hook",
+  "quizzes",
+  "script",
+  "scriptQA",
+  "narrationAudioTags",
+  "titleDescription",
+  "thumbnail",
+]);
 
 export function useAgentPipeline() {
   // ============================================
@@ -691,7 +717,16 @@ export function useAgentPipeline() {
       variables.VideoFrameModeVideoTask = getVideoFrameModeVideoTask(frameMode);
       variables.VideoFrameModeVideoRules = getVideoFrameModeVideoRules(frameMode);
 
-      const promptTemplateOverride = promptOverrides[stepId];
+      const audienceMode: AudienceMode = pipeline.audienceMode ?? "forKids";
+      const manualPromptOverride = promptOverrides[stepId];
+      const hasManualOverride =
+        typeof manualPromptOverride === "string" && manualPromptOverride.trim().length > 0;
+
+      const promptTemplateOverride = hasManualOverride
+        ? manualPromptOverride
+        : audienceMode === "forEveryone" && AUDIENCE_OVERRIDDEN_STEP_IDS.has(stepId)
+          ? getPromptByAudience(stepId, audienceMode)
+          : undefined;
 
       // Handle shell steps
       if (stepId === "narrationTimestamps") {
@@ -725,6 +760,7 @@ export function useAgentPipeline() {
             topic: pipeline.topic,
             variables,
             promptTemplateOverride,
+            audienceMode: pipeline.audienceMode ?? "forKids",
           }),
         });
 
@@ -1019,11 +1055,31 @@ export function useAgentPipeline() {
       return;
     }
 
-    const overrideEntries = Object.entries(promptOverrides).filter(
-      ([, value]) => typeof value === "string" && value.trim(),
-    ) as Array<[StepId, string]>;
-    const overrides =
-      overrideEntries.length > 0 ? Object.fromEntries(overrideEntries) : undefined;
+    const audienceMode: AudienceMode = pipeline.audienceMode ?? "forKids";
+
+    const baseOverrides: Partial<Record<StepId, string>> = {};
+    if (audienceMode === "forEveryone") {
+      for (const stepId of RUN_ALL_OVERRIDE_STEP_IDS) {
+        if (!AUDIENCE_OVERRIDDEN_STEP_IDS.has(stepId)) {
+          continue;
+        }
+        baseOverrides[stepId] = getPromptByAudience(stepId, audienceMode);
+      }
+    }
+
+    const manualOverrideEntries = Object.entries(promptOverrides)
+      .filter(([stepId, value]) => {
+        if (!RUN_ALL_OVERRIDE_STEP_IDS.has(stepId as StepId)) {
+          return false;
+        }
+        return typeof value === "string" && value.trim().length > 0;
+      })
+      .map(([stepId, value]) => [stepId as StepId, value as string] as const);
+
+    const manualOverrides = Object.fromEntries(manualOverrideEntries) as Partial<Record<StepId, string>>;
+
+    const mergedOverrides = { ...baseOverrides, ...manualOverrides };
+    const overrides = Object.keys(mergedOverrides).length > 0 ? mergedOverrides : undefined;
 
     setIsRunningAll(true);
 

@@ -6,6 +6,9 @@ import { STEP_CONFIGS } from '../../../../../lib/agent/steps';
 import { interpolatePrompt } from '../../../../../lib/agent/interpolate';
 import { normalizeModelId } from '../../../../../lib/llm/models';
 import { toNarrationOnly } from '@/lib/tts/cleanNarration';
+import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { getDefaultSettings } from '@/lib/settings/defaults';
+import type { ScriptAudioSettings } from '@/lib/settings/types';
 import type {
   ModelId,
   PipelineState,
@@ -19,6 +22,7 @@ type RunAllRequestBody = {
   topic: string;
   model: ModelId;
   promptTemplateOverrides?: Partial<Record<StepId, string>>;
+  defaultWordCount?: number;
 };
 
 const STEP_IDS: StepId[] = [
@@ -42,6 +46,43 @@ const VARIABLE_TO_PIPELINE_FIELD: Partial<Record<VariableKey, keyof PipelineStat
   Description: 'description',
   ThumbnailPrompt: 'thumbnailPrompt',
 };
+
+async function getSettingsDefaultWordCount(): Promise<number> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const userId = 'default'; // TODO: Replace with actual user ID when auth is implemented
+
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('settings_value')
+      .eq('user_id', userId)
+      .eq('settings_key', 'scriptAudio')
+      .single();
+
+    if (!error && data?.settings_value) {
+      const saved = data.settings_value as Partial<ScriptAudioSettings>;
+      const candidate = saved.defaultWordCount;
+      if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+        return Math.round(candidate);
+      }
+    }
+  } catch {
+    // Fall back to defaults below.
+  }
+
+  const defaults = getDefaultSettings('scriptAudio') as ScriptAudioSettings;
+  const fallback = defaults?.defaultWordCount;
+  return typeof fallback === 'number' && Number.isFinite(fallback) && fallback > 0
+    ? Math.round(fallback)
+    : 1500;
+}
+
+function insertChecklistBudgetLine(responseText: string, budgetLine: string): string {
+  if (!responseText || typeof responseText !== 'string') {
+    return responseText;
+  }
+  return responseText.replace(/^Checklist:\s*$/m, (match) => `${match}\n${budgetLine}`);
+}
 
 function isStepId(value: unknown): value is StepId {
   return typeof value === 'string' && STEP_IDS.includes(value as StepId);
@@ -80,7 +121,7 @@ function parseRequestBody(body: unknown): RunAllRequestBody | { error: string } 
     return { error: 'Invalid JSON body.' };
   }
 
-  const { topic, model, promptTemplateOverrides } = body as Partial<RunAllRequestBody>;
+  const { topic, model, promptTemplateOverrides, defaultWordCount } = body as Partial<RunAllRequestBody>;
 
   if (typeof topic !== 'string' || !topic.trim()) {
     return { error: 'Missing or invalid topic.' };
@@ -96,10 +137,16 @@ function parseRequestBody(body: unknown): RunAllRequestBody | { error: string } 
     return normalizedOverrides;
   }
 
+  const normalizedDefaultWordCount =
+    typeof defaultWordCount === 'number' && Number.isFinite(defaultWordCount) && defaultWordCount > 0
+      ? Math.round(defaultWordCount)
+      : undefined;
+
   return {
     topic,
     model: normalizedModel,
     promptTemplateOverrides: normalizedOverrides,
+    defaultWordCount: normalizedDefaultWordCount,
   };
 }
 
@@ -196,6 +243,8 @@ export async function POST(request: Request) {
     const variables: Record<string, string> = {
       Topic: topic,
     };
+    const settingsDefaultWordCount = await getSettingsDefaultWordCount();
+    variables.DefaultWordCount = String(settingsDefaultWordCount);
 
     for (const step of STEP_CONFIGS) {
       if (step.id === 'narrationAudio') {
@@ -228,10 +277,21 @@ export async function POST(request: Request) {
         return NextResponse.json(pipeline, { status: 500 });
       }
 
+      const hardCap = settingsDefaultWordCount;
+      const targetMax = Math.max(1, hardCap - 100);
+      const targetMin = Math.min(
+        targetMax,
+        Math.max(1, Math.round(targetMax * 0.9)),
+      );
+      const budgetLine = `LENGTH_BUDGET: Target ${targetMin}–${targetMax} words; hard cap ${hardCap} words.`;
+
       steps[step.id] = {
         id: step.id,
         resolvedPrompt: stepResult.resolvedPrompt,
-        responseText: stepResult.responseText,
+        responseText:
+          step.id === 'scriptQA'
+            ? insertChecklistBudgetLine(stepResult.responseText, budgetLine)
+            : stepResult.responseText,
         status: 'success',
         metrics: stepResult.metrics,
       };

@@ -88,11 +88,9 @@ You will be given the following inputs:
 
 ## Style & Length Rules
 
-- **Target length:** about 8 minutes read aloud (**maximum ~1,600 words**).
+- **Target length:** about 8 minutes read aloud (**maximum ~[DefaultWordCount] words**).
 - Write in smooth, natural sentences, with lots of punctuation to support the narrator.
-- **Avoid** baby talk and cheesy greetings (like "Hey kiddos!!!").
-- Keep the tone warm, smart, energetic, and respectful.
-- Don't include stage directions like \`[camera zoom]\` or \`[sound effect]\`. If a cue is needed, make it minimal and in brackets.
+- **Avoid** baby talk and cheesy greetings (like \`[camera zoom]\` or \`[sound effect]\`). If a cue is needed, make it minimal and in brackets.
 
 ---
 
@@ -120,7 +118,7 @@ You will be given the following inputs:
 - All Key Concepts are covered clearly
 - Both quizzes and answers included and correct
 - Script is engaging and clear for kids
-- Length is roughly ~1,500+ words
+- Length stays under [DefaultWordCount] words
 
 ---
 

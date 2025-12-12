@@ -13,7 +13,7 @@ import type {
 } from "@/types/agent";
 import { STEP_CONFIGS } from "@/lib/agent/steps";
 import { DEFAULT_MODEL_ID, normalizeModelId } from "@/lib/llm/models";
-import { DEFAULT_VISUAL_STYLE_ID } from "@/lib/agent/visual-styles";
+import { DEFAULT_VISUAL_STYLE_ID } from "@/prompts/visual-styles";
 
 // ============================================
 // Types
@@ -71,6 +71,7 @@ export function createInitialPipeline(visualStyleId?: VisualStyleId): PipelineSt
   return {
     topic: "",
     creatorName: "",
+    audienceMode: "forKids",
     model: DEFAULT_MODEL_ID,
     narrationModelId: DEFAULT_NARRATION_MODEL,
     visualStyleId: visualStyleId ?? DEFAULT_VISUAL_STYLE_ID,

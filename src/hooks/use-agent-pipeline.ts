@@ -13,6 +13,7 @@ import {
 import { getFramesForDuration } from "@/lib/video/fal-client";
 import { getOrCreateProjectSlug, getPublicProjectFileUrl } from "@/lib/projects";
 import type {
+  AudienceMode,
   ModelId,
   NarrationModelId,
   PipelineState,
@@ -23,6 +24,7 @@ import type {
   VideoFrameMode,
   VisualStyleId,
 } from "@/types/agent";
+import { getPromptByAudience } from "@/prompts/audience-prompts";
 import {
   styleRequiresCharacterReference,
   getProductionScriptStyleSections,
@@ -32,7 +34,7 @@ import {
   getVideoFrameModeImageRules,
   getVideoFrameModeVideoTask,
   getVideoFrameModeVideoRules,
-} from "@/lib/agent/visual-styles";
+} from "@/prompts/visual-styles";
 import {
   VARIABLE_KEY_TO_PIPELINE_FIELD,
   hasVariableValue,
@@ -63,6 +65,32 @@ import { useSceneImages } from "./pipeline/use-scene-images";
 import { useSceneVideos } from "./pipeline/use-scene-videos";
 import { useVideoAssembly } from "./pipeline/use-video-assembly";
 import { useSettings } from "./use-settings";
+import { getDefaultSettings } from "@/lib/settings/defaults";
+import type { ScriptAudioSettings as ScriptAudioSettingsType } from "@/lib/settings/types";
+
+const AUDIENCE_OVERRIDDEN_STEP_IDS: ReadonlySet<StepId> = new Set<StepId>([
+  "keyConcepts",
+  "hook",
+  "quizzes",
+  "script",
+  "scriptQA",
+  "narrationAudioTags",
+  "productionScript",
+  "sceneImagePrompts",
+  "titleDescription",
+  "thumbnail",
+]);
+
+const RUN_ALL_OVERRIDE_STEP_IDS: ReadonlySet<StepId> = new Set<StepId>([
+  "keyConcepts",
+  "hook",
+  "quizzes",
+  "script",
+  "scriptQA",
+  "narrationAudioTags",
+  "titleDescription",
+  "thumbnail",
+]);
 
 export function useAgentPipeline() {
   // ============================================
@@ -81,6 +109,16 @@ export function useAgentPipeline() {
   // Settings (used for sensible defaults)
   // ============================================
   const imagerySettings = useSettings("imagery");
+  const scriptAudioSettings = useSettings("scriptAudio");
+  const defaultScriptAudioSettings = getDefaultSettings("scriptAudio") as ScriptAudioSettingsType;
+  const scriptWordCountCap = useMemo(() => {
+    const configured = scriptAudioSettings.data?.defaultWordCount;
+    const fallback = defaultScriptAudioSettings.defaultWordCount;
+    if (typeof configured === "number" && Number.isFinite(configured) && configured > 0) {
+      return configured;
+    }
+    return fallback;
+  }, [defaultScriptAudioSettings.defaultWordCount, scriptAudioSettings.data?.defaultWordCount]);
 
   // ============================================
   // Timestamps state
@@ -736,6 +774,8 @@ export function useAgentPipeline() {
       if (pipeline.title) variables.Title = pipeline.title;
       if (pipeline.description) variables.Description = pipeline.description;
       if (pipeline.thumbnailPrompt) variables.ThumbnailPrompt = pipeline.thumbnailPrompt;
+
+      variables.DefaultWordCount = String(scriptWordCountCap);
       
       // Add JSON-based variables
       const narrationTimestampsValue = getPipelineValueForVariable(pipeline, 'NarrationTimestamps');
@@ -770,7 +810,16 @@ export function useAgentPipeline() {
       variables.VideoFrameModeVideoTask = getVideoFrameModeVideoTask(frameMode);
       variables.VideoFrameModeVideoRules = getVideoFrameModeVideoRules(frameMode);
 
-      const promptTemplateOverride = promptOverrides[stepId];
+      const audienceMode: AudienceMode = pipeline.audienceMode ?? "forKids";
+      const manualPromptOverride = promptOverrides[stepId];
+      const hasManualOverride =
+        typeof manualPromptOverride === "string" && manualPromptOverride.trim().length > 0;
+
+      const promptTemplateOverride = hasManualOverride
+        ? manualPromptOverride
+        : audienceMode === "forEveryone" && AUDIENCE_OVERRIDDEN_STEP_IDS.has(stepId)
+          ? getPromptByAudience(stepId, audienceMode)
+          : undefined;
 
       // Handle shell steps
       if (stepId === "narrationTimestamps") {
@@ -804,6 +853,7 @@ export function useAgentPipeline() {
             topic: pipeline.topic,
             variables,
             promptTemplateOverride,
+            audienceMode: pipeline.audienceMode ?? "forKids",
           }),
         });
 
@@ -1031,7 +1081,13 @@ export function useAgentPipeline() {
         }));
       }
     },
-    [pipeline, promptOverrides, autoSave.queueAutoSave, runNarrationTimestampsStep],
+    [
+      autoSave.queueAutoSave,
+      pipeline,
+      promptOverrides,
+      runNarrationTimestampsStep,
+      scriptWordCountCap,
+    ],
   );
 
   // ============================================
@@ -1054,11 +1110,31 @@ export function useAgentPipeline() {
       return;
     }
 
-    const overrideEntries = Object.entries(promptOverrides).filter(
-      ([, value]) => typeof value === "string" && value.trim(),
-    ) as Array<[StepId, string]>;
-    const overrides =
-      overrideEntries.length > 0 ? Object.fromEntries(overrideEntries) : undefined;
+    const audienceMode: AudienceMode = pipeline.audienceMode ?? "forKids";
+
+    const baseOverrides: Partial<Record<StepId, string>> = {};
+    if (audienceMode === "forEveryone") {
+      for (const stepId of RUN_ALL_OVERRIDE_STEP_IDS) {
+        if (!AUDIENCE_OVERRIDDEN_STEP_IDS.has(stepId)) {
+          continue;
+        }
+        baseOverrides[stepId] = getPromptByAudience(stepId, audienceMode);
+      }
+    }
+
+    const manualOverrideEntries = Object.entries(promptOverrides)
+      .filter(([stepId, value]) => {
+        if (!RUN_ALL_OVERRIDE_STEP_IDS.has(stepId as StepId)) {
+          return false;
+        }
+        return typeof value === "string" && value.trim().length > 0;
+      })
+      .map(([stepId, value]) => [stepId as StepId, value as string] as const);
+
+    const manualOverrides = Object.fromEntries(manualOverrideEntries) as Partial<Record<StepId, string>>;
+
+    const mergedOverrides = { ...baseOverrides, ...manualOverrides };
+    const overrides = Object.keys(mergedOverrides).length > 0 ? mergedOverrides : undefined;
 
     setIsRunningAll(true);
 
@@ -1066,6 +1142,7 @@ export function useAgentPipeline() {
       const body: Record<string, unknown> = {
         topic: pipeline.topic,
         model: pipeline.model,
+        defaultWordCount: scriptWordCountCap,
       };
       if (overrides && Object.keys(overrides).length > 0) {
         body.promptTemplateOverrides = overrides;
@@ -1124,7 +1201,7 @@ export function useAgentPipeline() {
     } finally {
       setIsRunningAll(false);
     }
-  }, [pipeline, promptOverrides, narrationAudio.runNarrationAudioStep]);
+  }, [pipeline, promptOverrides, narrationAudio.runNarrationAudioStep, scriptWordCountCap]);
 
   // ============================================
   // Utility Actions

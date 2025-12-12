@@ -9,6 +9,7 @@
  */
 
 import { fal } from "@fal-ai/client";
+import { FAL_WAN_DEFAULT_NEGATIVE_PROMPT } from "@/prompts";
 
 // Configure fal client with API key from environment
 if (process.env.FAL_KEY) {
@@ -306,7 +307,7 @@ export async function generateVideoClip(
     guidance_scale_2: input.guidanceScale2 ?? 3.0,   // Reduced from 3.5 for smoother motion
     shift: input.shift ?? 5,
     // Enhanced negative prompt for kids safety + motion quality
-    negative_prompt: input.negativePrompt ?? "blur, distort, low quality, blurry, pixelated, watermark, ugly, deformed, scary, violent, blood, gore, inappropriate, adult content, nsfw, dark, creepy, jerky motion, sudden movement, rapid change",
+    negative_prompt: input.negativePrompt ?? FAL_WAN_DEFAULT_NEGATIVE_PROMPT,
 
     // Frame Interpolation - "film" provides smoothest motion for "breathing photograph" style
     // Higher interpolation frames (2) produce smoother transitions for FLF2V

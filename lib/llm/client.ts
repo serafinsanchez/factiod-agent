@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 
 import type { ModelId } from '../../types/agent';
+import { SAFETY_SYSTEM_PROMPT } from '@/prompts';
 
 type Usage = {
   prompt_tokens: number;
@@ -80,9 +81,6 @@ function getOpenAIClient(): OpenAI {
   }
   return new OpenAI({ apiKey });
 }
-
-// Safety prompt to enforce clean output format (no reasoning in content)
-const SAFETY_SYSTEM_PROMPT = `CRITICAL OUTPUT RULE: Your response must ONLY contain the final answer that directly fulfills the request. Do not include your reasoning process, thinking steps, or explanations in your output. Output only the exact content requested, nothing more.`;
 
 type AnthropicContentBlock = {
   type?: string;

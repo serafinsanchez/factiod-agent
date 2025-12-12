@@ -91,7 +91,12 @@ export function useThumbnailGeneration({
       const res = await fetch("/api/gemini/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, projectSlug, thumbnailPath }),
+        body: JSON.stringify({
+          prompt,
+          projectSlug,
+          thumbnailPath,
+          audienceMode: pipeline.audienceMode,
+        }),
       });
 
       if (!res.ok) {

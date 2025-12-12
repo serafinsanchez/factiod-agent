@@ -2,23 +2,29 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Film, Layers, Sparkles } from "lucide-react";
+import { Baby, Check, Film, Layers, Sparkles, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { VisualStyleId } from "@/types/agent";
+import type { AudienceMode, VisualStyleId } from "@/types/agent";
 import {
   VISUAL_STYLE_PRESETS,
   DEFAULT_VISUAL_STYLE_ID,
   type VisualStylePreset,
-} from "@/lib/agent/visual-styles";
+} from "@/prompts/visual-styles";
 
 interface StyleSelectorProps {
   isOpen: boolean;
-  onSelect: (styleId: VisualStyleId) => void;
+  onSelect: (styleId: VisualStyleId, audienceMode: AudienceMode) => void;
   onClose: () => void;
   /** When opening, preselect this style (defaults to app default). */
   initialStyleId?: VisualStyleId;
+  /** When opening, preselect this audience mode (defaults to 'forKids'). */
+  initialAudienceMode?: AudienceMode;
+  /** Whether to show the audience selector UI. Defaults to true. */
+  showAudienceMode?: boolean;
+  /** Whether to show the visual style selector UI. Defaults to true. */
+  showVisualStyle?: boolean;
   /** Small uppercase label shown above the title (defaults to \"New Project\"). */
   contextLabel?: string;
   /** Modal title (defaults to \"Choose a Visual Style\"). */
@@ -57,6 +63,94 @@ const STYLE_COLORS: Record<VisualStyleId, { bg: string; border: string; text: st
     glow: "shadow-emerald-500/20",
   },
 };
+
+const AUDIENCE_OPTIONS: Array<{
+  id: AudienceMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "forKids",
+    label: "For Kids",
+    description: "Explicitly kid-focused tone and language (current default).",
+  },
+  {
+    id: "forEveryone",
+    label: "For Everyone",
+    description: "Family-friendly, but written for teens + adults too.",
+  },
+];
+
+const AUDIENCE_ICONS: Record<AudienceMode, React.ReactNode> = {
+  forKids: <Baby className="h-6 w-6" />,
+  forEveryone: <Users className="h-6 w-6" />,
+};
+
+const AUDIENCE_COLORS: Record<AudienceMode, { bg: string; border: string; text: string; glow: string }> = {
+  forKids: {
+    bg: "bg-gradient-to-br from-sky-500/20 to-violet-500/20",
+    border: "border-sky-500/40",
+    text: "text-sky-200",
+    glow: "shadow-sky-500/20",
+  },
+  forEveryone: {
+    bg: "bg-gradient-to-br from-emerald-500/20 to-teal-500/20",
+    border: "border-emerald-500/40",
+    text: "text-emerald-200",
+    glow: "shadow-emerald-500/20",
+  },
+};
+
+function AudienceCard({
+  option,
+  isSelected,
+  onSelect,
+}: {
+  option: (typeof AUDIENCE_OPTIONS)[number];
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  const colors = AUDIENCE_COLORS[option.id];
+  const icon = AUDIENCE_ICONS[option.id];
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "group relative flex flex-col items-start rounded-2xl border-2 p-5 text-left transition-all duration-200",
+        "hover:scale-[1.01] hover:shadow-lg",
+        isSelected
+          ? cn(colors.bg, colors.border, "shadow-lg", colors.glow)
+          : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 hover:bg-zinc-900/80",
+      )}
+    >
+      <div
+        className={cn(
+          "absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full transition-all",
+          isSelected ? "bg-white text-zinc-900" : "border border-zinc-700 bg-zinc-800/50",
+        )}
+      >
+        {isSelected && <Check className="h-4 w-4" strokeWidth={3} />}
+      </div>
+
+      <div
+        className={cn(
+          "mb-4 flex h-12 w-12 items-center justify-center rounded-xl transition-colors",
+          isSelected ? cn(colors.bg, colors.text) : "bg-zinc-800 text-zinc-400",
+        )}
+      >
+        {icon}
+      </div>
+
+      <h3 className={cn("text-lg font-semibold", isSelected ? "text-white" : "text-zinc-200")}>
+        {option.label}
+      </h3>
+
+      <p className="mt-2 text-sm leading-relaxed text-zinc-400">{option.description}</p>
+    </button>
+  );
+}
 
 function StyleCard({
   preset,
@@ -142,6 +236,9 @@ export function StyleSelector({
   onSelect,
   onClose,
   initialStyleId,
+  initialAudienceMode,
+  showAudienceMode = true,
+  showVisualStyle = true,
   contextLabel = "New Project",
   title = "Choose a Visual Style",
   description = "Select the visual aesthetic for your video. This affects how scenes are generated throughout the pipeline.",
@@ -150,6 +247,9 @@ export function StyleSelector({
 }: StyleSelectorProps) {
   const [selectedStyle, setSelectedStyle] = useState<VisualStyleId>(
     initialStyleId ?? DEFAULT_VISUAL_STYLE_ID,
+  );
+  const [selectedAudienceMode, setSelectedAudienceMode] = useState<AudienceMode>(
+    initialAudienceMode ?? "forKids",
   );
   const isBrowser = typeof document !== "undefined";
 
@@ -171,7 +271,7 @@ export function StyleSelector({
   }
 
   const handleConfirm = () => {
-    onSelect(selectedStyle);
+    onSelect(selectedStyle, selectedAudienceMode);
   };
 
   return createPortal(
@@ -193,16 +293,41 @@ export function StyleSelector({
 
           {/* Style Cards */}
           <div className="flex-1 overflow-y-auto px-8 py-6">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {VISUAL_STYLE_PRESETS.map((preset) => (
-                <StyleCard
-                  key={preset.id}
-                  preset={preset}
-                  isSelected={selectedStyle === preset.id}
-                  onSelect={() => setSelectedStyle(preset.id)}
-                />
-              ))}
-            </div>
+            {showAudienceMode && (
+              <div className="mb-8">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
+                  Audience
+                </p>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  {AUDIENCE_OPTIONS.map((option) => (
+                    <AudienceCard
+                      key={option.id}
+                      option={option}
+                      isSelected={selectedAudienceMode === option.id}
+                      onSelect={() => setSelectedAudienceMode(option.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {showVisualStyle && (
+              <>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
+                  Visual style
+                </p>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {VISUAL_STYLE_PRESETS.map((preset) => (
+                    <StyleCard
+                      key={preset.id}
+                      preset={preset}
+                      isSelected={selectedStyle === preset.id}
+                      onSelect={() => setSelectedStyle(preset.id)}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Footer */}

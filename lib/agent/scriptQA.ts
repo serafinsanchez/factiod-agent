@@ -25,10 +25,26 @@ const HEADING_PREFIXES = [
   'analysis',
 ];
 
-const SCRIPT_QA_TARGET_MIN_WORDS = 1_350;
-const SCRIPT_QA_TARGET_MAX_WORDS = 1_500;
-const SCRIPT_QA_HARD_CAP_WORDS = 1_600;
 const SCRIPT_QA_MAX_ATTEMPTS = 3;
+const SCRIPT_QA_FALLBACK_HARD_CAP_WORDS = 1_600;
+const SCRIPT_QA_TARGET_MAX_BUFFER_WORDS = 100;
+const SCRIPT_QA_TARGET_MIN_RATIO = 0.9;
+
+function getQaWordBudget(vars: Record<string, string>): {
+  hardCap: number;
+  targetMax: number;
+  targetMin: number;
+} {
+  const raw = vars.DefaultWordCount;
+  const parsed = raw ? Number.parseInt(String(raw), 10) : NaN;
+  const hardCap =
+    Number.isFinite(parsed) && parsed > 0 ? parsed : SCRIPT_QA_FALLBACK_HARD_CAP_WORDS;
+
+  const targetMax = Math.max(1, hardCap - SCRIPT_QA_TARGET_MAX_BUFFER_WORDS);
+  const targetMin = Math.min(targetMax, Math.max(1, Math.round(targetMax * SCRIPT_QA_TARGET_MIN_RATIO)));
+
+  return { hardCap, targetMax, targetMin };
+}
 
 export function extractFinalScript(responseText: string): string {
   if (!responseText) {
@@ -216,6 +232,8 @@ export async function runScriptQaWithWordGoal(
     return runStep(params);
   }
 
+  const { hardCap, targetMax, targetMin } = getQaWordBudget(params.variables);
+
   let attemptScript = baseScript;
   let lastResult: RunStepOutput | null = null;
   let aggregatedMetrics: StepRunMetrics | null = null;
@@ -226,11 +244,11 @@ export async function runScriptQaWithWordGoal(
   for (let attempt = 0; attempt < SCRIPT_QA_MAX_ATTEMPTS; attempt += 1) {
     attemptsUsed = attempt + 1;
     const sourceWordCount = Math.max(0, countWords(attemptScript));
-    const wordsOverCap = Math.max(0, sourceWordCount - SCRIPT_QA_TARGET_MAX_WORDS);
+    const wordsOverCap = Math.max(0, sourceWordCount - targetMax);
     const revisionNotes =
       attempt === 0
         ? 'None — first QA pass.'
-        : `Attempt ${attempt} output was ${sourceWordCount} words (> ${SCRIPT_QA_TARGET_MAX_WORDS}). Remove at least ${Math.max(
+        : `Attempt ${attempt} output was ${sourceWordCount} words (> ${targetMax}). Remove at least ${Math.max(
             50,
             Math.min(wordsOverCap, 250),
           )} words while keeping both quizzes, the key examples, and factual accuracy.`;
@@ -239,10 +257,10 @@ export async function runScriptQaWithWordGoal(
       ...params.variables,
       VideoScript: attemptScript,
       QA_SourceWordCount: String(sourceWordCount),
-      QA_TargetWordMin: String(SCRIPT_QA_TARGET_MIN_WORDS),
-      QA_TargetWordMax: String(SCRIPT_QA_TARGET_MAX_WORDS),
-      QA_TargetWordRange: `${SCRIPT_QA_TARGET_MIN_WORDS}-${SCRIPT_QA_TARGET_MAX_WORDS}`,
-      QA_HardWordCap: String(SCRIPT_QA_HARD_CAP_WORDS),
+      QA_TargetWordMin: String(targetMin),
+      QA_TargetWordMax: String(targetMax),
+      QA_TargetWordRange: `${targetMin}-${targetMax}`,
+      QA_HardWordCap: String(hardCap),
       QA_AttemptNumber: String(attempt + 1),
       QA_RevisionNotes: revisionNotes,
     };
@@ -277,7 +295,7 @@ export async function runScriptQaWithWordGoal(
       metrics: aggregatedMetrics,
     };
 
-    if (candidateScript && candidateWordCount <= SCRIPT_QA_HARD_CAP_WORDS) {
+    if (candidateScript && candidateWordCount <= hardCap) {
       return lastResult;
     }
 
@@ -290,11 +308,11 @@ export async function runScriptQaWithWordGoal(
     return runStep(params);
   }
 
-  if (lastScriptWordCount <= SCRIPT_QA_HARD_CAP_WORDS) {
+  if (lastScriptWordCount <= hardCap) {
     return lastResult;
   }
 
-  const forcedScript = forceTrimScript(lastScript || baseScript, SCRIPT_QA_TARGET_MAX_WORDS);
+  const forcedScript = forceTrimScript(lastScript || baseScript, targetMax);
   const forcedWordCount = countWords(forcedScript);
   const syntheticResponse = buildSyntheticResponse({
     forcedScript,

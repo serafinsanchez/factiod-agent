@@ -1,4 +1,4 @@
-import type { VisualStyleId, VideoFrameMode } from '../../types/agent';
+import type { VisualStyleId, VideoFrameMode } from '@/types/agent';
 
 // Shared example for single-frame video mode to avoid conflicting guidance.
 const FIRST_FRAME_ONLY_VIDEO_OUTPUT_EXAMPLE = `\`\`\`json
@@ -514,7 +514,7 @@ export const VISUAL_STYLE_BY_ID: Record<VisualStyleId, VisualStylePreset> = {
 /**
  * Default visual style for new projects
  */
-export const DEFAULT_VISUAL_STYLE_ID: VisualStyleId = 'pixar-3d';
+export const DEFAULT_VISUAL_STYLE_ID: VisualStyleId = 'documentary';
 
 /**
  * Get a visual style preset by ID, falling back to default if not found

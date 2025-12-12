@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { HistoryProject, PipelineState, VisualStyleId } from "@/types/agent";
+import type { AudienceMode, HistoryProject, PipelineState, VisualStyleId } from "@/types/agent";
 import { getOrCreateProjectSlug, getPublicProjectFileUrl } from "@/lib/projects";
 import {
   createInitialPipeline,
@@ -88,8 +88,14 @@ export function useProjectHistory({
     }
   }, []);
 
-  const newProject = useCallback((visualStyleId?: VisualStyleId) => {
-    setPipeline(() => createInitialPipeline(visualStyleId ?? defaultVisualStyleId));
+  const newProject = useCallback((visualStyleId?: VisualStyleId, audienceMode?: AudienceMode) => {
+    setPipeline(() => {
+      const base = createInitialPipeline(visualStyleId ?? defaultVisualStyleId);
+      return {
+        ...base,
+        audienceMode: audienceMode ?? base.audienceMode,
+      };
+    });
     setPromptOverrides({});
     setSelectedProjectId(null);
     setSaveError(null);

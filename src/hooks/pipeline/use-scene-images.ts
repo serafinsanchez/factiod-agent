@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import type { PipelineState, SceneAsset, VideoFrameMode } from "@/types/agent";
 import { getOrCreateProjectSlug, getPublicProjectFileUrl } from "@/lib/projects";
 import { slugifyTopic } from "@/lib/slug";
-import { styleRequiresCharacterReference } from "@/lib/agent/visual-styles";
+import { styleRequiresCharacterReference } from "@/prompts/visual-styles";
 import { type ProgressState, ensureStepState } from "./pipeline-types";
 
 type UseSceneImagesOptions = {

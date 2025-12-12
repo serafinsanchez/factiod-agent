@@ -2,9 +2,12 @@ import { NextResponse } from 'next/server';
 
 import { runStep } from '../../../../../lib/agent/runStep';
 import { extractFinalScript, runScriptQaWithWordGoal } from '../../../../../lib/agent/scriptQA';
-import { getStepConfig, SERVER_EXECUTABLE_STEP_IDS } from '../../../../../lib/agent/steps';
+import { getStepConfigForAudience, SERVER_EXECUTABLE_STEP_IDS } from '../../../../../lib/agent/steps';
 import { normalizeModelId } from '../../../../../lib/llm/models';
-import type { ModelId, StepId } from '../../../../../types/agent';
+import type { ModelId, StepId, AudienceMode } from '../../../../../types/agent';
+import { getSupabaseServerClient } from '@/lib/supabase/server';
+import { getDefaultSettings } from '@/lib/settings/defaults';
+import type { ScriptAudioSettings } from '@/lib/settings/types';
 
 type RunStepRequestBody = {
   stepId: StepId;
@@ -12,6 +15,7 @@ type RunStepRequestBody = {
   topic: string;
   variables?: Record<string, string>;
   promptTemplateOverride?: string;
+  audienceMode?: AudienceMode;
 };
 
 type ParsedRunStepRequestBody = {
@@ -20,9 +24,55 @@ type ParsedRunStepRequestBody = {
   topic: string;
   variables: Record<string, string>;
   promptTemplateOverride?: string;
+  audienceMode: AudienceMode;
 };
 
 const SERVER_STEP_IDS = new Set<StepId>(SERVER_EXECUTABLE_STEP_IDS);
+
+async function getSettingsDefaultWordCount(): Promise<number> {
+  try {
+    const supabase = getSupabaseServerClient();
+    const userId = 'default'; // TODO: Replace with actual user ID when auth is implemented
+
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('settings_value')
+      .eq('user_id', userId)
+      .eq('settings_key', 'scriptAudio')
+      .single();
+
+    if (!error && data?.settings_value) {
+      const saved = data.settings_value as Partial<ScriptAudioSettings>;
+      const candidate = saved.defaultWordCount;
+      if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+        return Math.round(candidate);
+      }
+    }
+  } catch {
+    // Fall back to defaults below.
+  }
+
+  const defaults = getDefaultSettings('scriptAudio') as ScriptAudioSettings;
+  const fallback = defaults?.defaultWordCount;
+  return typeof fallback === 'number' && Number.isFinite(fallback) && fallback > 0
+    ? Math.round(fallback)
+    : 1500;
+}
+
+function coercePositiveInt(value: unknown): number | null {
+  const parsed =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number.parseInt(value, 10)
+        : NaN;
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return Math.round(parsed);
+}
 
 function normalizeLineEndings(text: string) {
   return text.replace(/\r\n/g, '\n');
@@ -31,6 +81,116 @@ function normalizeLineEndings(text: string) {
 function splitLinesForStrictComparison(text: string) {
   // Preserve leading whitespace and internal empty lines; ignore only trailing newlines.
   return normalizeLineEndings(text).trimEnd().split('\n');
+}
+
+function getTagForLine(line: string): string {
+  const trimmed = line.trim().toLowerCase();
+  if (!trimmed) return '[warmly]';
+
+  // Quiz-related lines
+  if (/quiz|ready\?|pause.*video|think about it/i.test(trimmed)) {
+    return '[playfully]';
+  }
+  if (/correct|right|well done|nailed it|you got it/i.test(trimmed)) {
+    return '[encouragingly]';
+  }
+
+  // Wow facts and surprising info
+  if (/did you know|here's something|amazing|incredible|wild|billion|million/i.test(trimmed)) {
+    return '[amazed]';
+  }
+
+  // Mystery/intrigue
+  if (/secret|mystery|hidden|most people don't|overlooked/i.test(trimmed)) {
+    return '[conspiratorially]';
+  }
+
+  // Questions
+  if (trimmed.includes('?')) {
+    return '[curiously]';
+  }
+
+  // Excitement
+  if (trimmed.includes('!')) {
+    return '[enthusiastically]';
+  }
+
+  // Thoughtful pauses
+  if (trimmed.includes('...')) {
+    return '[thoughtfully]';
+  }
+
+  // Importance/meaning
+  if (/important|matters|crucial|essential|key/i.test(trimmed)) {
+    return '[earnestly]';
+  }
+
+  // Default to warm, engaging delivery
+  return '[warmly]';
+}
+
+function ensureMinimumNarrationAudioTags({
+  inputNarrationScript,
+  responseText,
+}: {
+  inputNarrationScript: string;
+  responseText: string;
+}): string {
+  const inputLines = splitLinesForStrictComparison(inputNarrationScript);
+  const outputLines = splitLinesForStrictComparison(responseText);
+
+  // If the model broke the "same number of lines" rule, don't try to repair it here.
+  // The validator will return a clear error telling the user/LLM what to fix.
+  if (outputLines.length !== inputLines.length) {
+    return responseText;
+  }
+
+  const tagRegex = /\[[^\[\]]+\]/g;
+  const tagRegexSingle = /\[[^\[\]]+\]/;
+  const nonEmptyLineIndexes: number[] = [];
+  let tagCount = 0;
+
+  for (let i = 0; i < outputLines.length; i += 1) {
+    const line = outputLines[i] ?? '';
+    if (line.trim().length > 0) nonEmptyLineIndexes.push(i);
+    const matches = Array.from(line.matchAll(tagRegex));
+    if (matches.length === 1) tagCount += 1;
+  }
+
+  const nonEmptyLineCount = nonEmptyLineIndexes.length;
+  const minTags = Math.max(1, Math.floor(nonEmptyLineCount * 0.25));
+  const missingTags = minTags - tagCount;
+  if (missingTags <= 0) {
+    return responseText;
+  }
+
+  const candidateIndexes = nonEmptyLineIndexes.filter((i) => {
+    const line = outputLines[i] ?? '';
+    return !tagRegexSingle.test(line);
+  });
+
+  if (candidateIndexes.length === 0) {
+    return responseText;
+  }
+
+  // Pick lines evenly across the script so we don't cluster tags at the top.
+  const picked = new Set<number>();
+  for (let k = 0; k < missingTags; k += 1) {
+    const pos = Math.floor(((k + 0.5) * candidateIndexes.length) / missingTags);
+    const idx = candidateIndexes[Math.min(candidateIndexes.length - 1, Math.max(0, pos))];
+    if (idx !== undefined) {
+      picked.add(idx);
+    }
+  }
+
+  for (const idx of picked) {
+    const current = outputLines[idx] ?? '';
+    if (!current.trim()) continue;
+    const tag = getTagForLine(current);
+    outputLines[idx] = `${current} ${tag}`;
+  }
+
+  return outputLines.join('\n');
 }
 
 function validateNarrationAudioTagsResponse({
@@ -54,9 +214,14 @@ function validateNarrationAudioTagsResponse({
 
   const tagRegex = /\[[^\[\]]+\]/g;
   const tagWordRegex = /^[A-Za-z]+(?:-[A-Za-z]+)*$/;
+  let tagCount = 0;
+  let nonEmptyLineCount = 0;
 
   for (let i = 0; i < outputLines.length; i += 1) {
     const line = outputLines[i] ?? '';
+    if (line.trim().length > 0) {
+      nonEmptyLineCount += 1;
+    }
     const matches = Array.from(line.matchAll(tagRegex));
 
     if (matches.length > 1) {
@@ -69,6 +234,7 @@ function validateNarrationAudioTagsResponse({
     }
 
     if (matches.length === 1) {
+      tagCount += 1;
       const raw = (matches[0]?.[0] ?? '').slice(1, -1); // content inside brackets, no trimming
 
       if (raw.trim() !== raw) {
@@ -89,6 +255,19 @@ function validateNarrationAudioTagsResponse({
         };
       }
     }
+  }
+
+  // Require at least some tags so this step actually does work.
+  // With the "one tag per line" rule, the max possible tags equals non-empty lines.
+  // We enforce a low, proportional minimum to avoid impossible thresholds on short scripts.
+  const minTags = Math.max(1, Math.floor(nonEmptyLineCount * 0.25));
+  if (tagCount < minTags) {
+    return {
+      ok: false,
+      error:
+        `Invalid audio tags output: expected at least ${minTags} tag(s) across ${nonEmptyLineCount} non-empty line(s), ` +
+        `but found ${tagCount}. Add voice tags like [curious] or [neutral] without changing any words.`,
+    };
   }
 
   return { ok: true };
@@ -133,6 +312,7 @@ function parseRequestBody(body: unknown): ParsedRunStepRequestBody | { error: st
     topic,
     variables,
     promptTemplateOverride,
+    audienceMode,
   } = body as Partial<RunStepRequestBody>;
 
   if (!isStepId(stepId)) {
@@ -161,12 +341,19 @@ function parseRequestBody(body: unknown): ParsedRunStepRequestBody | { error: st
     return { error: 'variables must be an object map of string values.' };
   }
 
+  // Default to 'forKids' if not provided for backwards compatibility
+  const normalizedAudienceMode: AudienceMode = 
+    audienceMode === 'forEveryone' || audienceMode === 'forKids' 
+      ? audienceMode 
+      : 'forKids';
+
   return {
     stepId,
     model: normalizedModel,
     topic,
     variables: normalizedVariables ?? ({} as Record<string, string>),
     promptTemplateOverride,
+    audienceMode: normalizedAudienceMode,
   };
 }
 
@@ -179,9 +366,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
 
-    const { stepId, model, topic, variables, promptTemplateOverride } = parsed;
+    const { stepId, model, topic, promptTemplateOverride, audienceMode } = parsed;
+    let { variables } = parsed;
 
-    const step = getStepConfig(stepId);
+    // Enforce settings-backed script length on the server so all clients/audiences behave consistently.
+    if (stepId === 'script' || stepId === 'scriptQA') {
+      const effectiveWordCount = await getSettingsDefaultWordCount();
+      variables = {
+        ...variables,
+        DefaultWordCount: String(effectiveWordCount),
+      };
+    }
+
+    const step = getStepConfigForAudience(stepId, audienceMode);
 
     // Use step's defaultModel if available, otherwise use the provided model
     const effectiveModel = step.defaultModel ?? model;
@@ -230,6 +427,8 @@ export async function POST(request: Request) {
       promptTemplateOverride,
     });
 
+    let finalResponseText = responseText;
+
     if (needsHighTokenLimit) {
       const llmDuration = Date.now() - llmStartTime;
       const responseSize = responseText?.length || 0;
@@ -248,9 +447,16 @@ export async function POST(request: Request) {
         );
       }
 
-      const validation = validateNarrationAudioTagsResponse({
+      // If the model returns too few tags, auto-insert a minimum set of safe tags
+      // without changing any words or line structure.
+      finalResponseText = ensureMinimumNarrationAudioTags({
         inputNarrationScript,
         responseText,
+      });
+
+      const validation = validateNarrationAudioTagsResponse({
+        inputNarrationScript,
+        responseText: finalResponseText,
       });
 
       if (!validation.ok) {
@@ -269,6 +475,20 @@ export async function POST(request: Request) {
         Description: description,
       };
     } else if (stepId === 'scriptQA') {
+      const hardCap = coercePositiveInt(variables.DefaultWordCount) ?? 1600;
+      const targetMax = Math.max(1, hardCap - 100);
+      const targetMin = Math.min(
+        targetMax,
+        Math.max(1, Math.round(targetMax * 0.9)),
+      );
+      const budgetLine = `LENGTH_BUDGET: Target ${targetMin}–${targetMax} words; hard cap ${hardCap} words.`;
+
+      // Insert budget line immediately after the first Checklist: marker (if present).
+      // This keeps the output transparent while ensuring script extraction ignores it.
+      finalResponseText = finalResponseText.replace(
+        /^Checklist:\s*$/m,
+        (match) => `${match}\n${budgetLine}`,
+      );
       producedVariables = {
         VideoScript: extractFinalScript(responseText),
       };
@@ -276,7 +496,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       resolvedPrompt,
-      responseText,
+      responseText: finalResponseText,
       metrics,
       producedVariables,
     });

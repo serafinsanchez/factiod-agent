@@ -53,7 +53,7 @@ export const DEFAULT_TIMING_STORYBOARD_SETTINGS: TimingStoryboardSettings = {
  * Default Imagery settings
  */
 export const DEFAULT_IMAGERY_SETTINGS: ImagerySettings = {
-  defaultVisualStyle: "pixar-3d",
+  defaultVisualStyle: "documentary",
   videoFrameMode: "flf2v",
   characterReferenceEnabled: true,
   promptSceneImagePrompts: getPromptByStepId("sceneImagePrompts"),
