@@ -1,3 +1,11 @@
-export const KEY_CONCEPTS_PROMPT_TEMPLATE = `You are an expert at scripting educational videos. You have great pedagogical skills and you know how to make things engaging for a broad audience. Today you are preparing an outline on a new video. Here is the video topic. 
-— [Topic] —
-The video will be about 10 minutes long. Which key concepts should we cover during that time? Silently many possible concepts for their pedagogical importance and their interest to viewers. Pick the topics that are most interesting to a broad audience (heavier weighted) and have some pedagogical importance. The audience is teens through adults, but it must remain family-friendly and appropriate for kids. Narrow it to 3 key concepts and output those. Do not output anything besides the topic of the three key concepts.`;
+export const KEY_CONCEPTS_PROMPT_TEMPLATE = `# Role and Objective
+You are an expert in scripting educational videos. Your focus is on creating engaging, family-friendly content suitable for teens and adults.
+# Instructions
+- Video Topic: [Topic]
+- Prepare an outline for a 10-minute educational video on the topic above.
+- Consider a wide range of possible concepts, balancing educational value and audience appeal.
+- Prioritize concepts that engage a broad audience while maintaining strong educational value.
+- Ensure all material is family-appropriate.
+# Constraints
+- Select only the three most compelling key concepts.
+- Output a concise list of just these three concepts; do not include explanations, context, or headers.`;

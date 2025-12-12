@@ -20,6 +20,7 @@ import type {
   ProductionScriptData,
   StepId,
   StepRunMetrics,
+  StepRunState,
   VariableKey,
   VideoFrameMode,
   VisualStyleId,
@@ -91,6 +92,23 @@ const RUN_ALL_OVERRIDE_STEP_IDS: ReadonlySet<StepId> = new Set<StepId>([
   "titleDescription",
   "thumbnail",
 ]);
+
+function resetStepsAfterTopicChange(
+  steps: Record<StepId, StepRunState>,
+): Record<StepId, StepRunState> {
+  const nextSteps: Record<StepId, StepRunState> = {} as Record<StepId, StepRunState>;
+  for (const [stepId, step] of Object.entries(steps) as Array<[StepId, StepRunState]>) {
+    nextSteps[stepId] = {
+      ...step,
+      status: "idle",
+      resolvedPrompt: "",
+      responseText: "",
+      errorMessage: undefined,
+      metrics: undefined,
+    };
+  }
+  return nextSteps;
+}
 
 export function useAgentPipeline() {
   // ============================================
@@ -348,10 +366,46 @@ export function useAgentPipeline() {
     });
   }, []);
 
-  const setTopic = useCallback(
-    (topic: string) => setVariable("Topic", topic),
-    [setVariable],
-  );
+  const setTopic = useCallback((topic: string) => {
+    setPipeline((prev) => {
+      if (prev.topic === topic) {
+        return prev;
+      }
+
+      const prevTrimmed = prev.topic.trim();
+      const nextTrimmed = topic.trim();
+
+      // If only whitespace changed, keep outputs but update topic.
+      if (prevTrimmed === nextTrimmed) {
+        return { ...prev, topic };
+      }
+
+      const clearedSteps = resetStepsAfterTopicChange(prev.steps);
+
+      return {
+        ...prev,
+        topic,
+        keyConcepts: "",
+        hookScript: "",
+        quizInfo: "",
+        videoScript: "",
+        narrationScript: "",
+        title: "",
+        description: "",
+        thumbnailPrompt: "",
+        narrationTimestamps: undefined,
+        productionScript: undefined,
+        characterReferenceImage: undefined,
+        sceneAssets: undefined,
+        finalVideoPath: undefined,
+        videoAssemblyStatus: "idle",
+        scriptPath: undefined,
+        audioPath: undefined,
+        thumbnailPath: undefined,
+        steps: clearedSteps,
+      };
+    });
+  }, []);
 
   const setModel = useCallback((model: ModelId) => {
     setPipeline((prev) => ({ ...prev, model }));
@@ -844,6 +898,9 @@ export function useAgentPipeline() {
       }));
 
       try {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'post-fix',hypothesisId:'J',location:'src/hooks/use-agent-pipeline.ts:runStep:request',message:'Calling /api/agent/run-step',data:{stepId,model:pipeline.model,audienceMode:pipeline.audienceMode ?? "forKids",hasPromptOverride:typeof promptTemplateOverride==="string" && promptTemplateOverride.trim().length>0,variablesKeys:Object.keys(variables).slice(0,40)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
         const response = await fetch("/api/agent/run-step", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -857,14 +914,25 @@ export function useAgentPipeline() {
           }),
         });
 
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'post-fix',hypothesisId:'K',location:'src/hooks/use-agent-pipeline.ts:runStep:response-meta',message:'Received /api/agent/run-step response headers',data:{stepId,status:response.status,ok:response.ok},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+
         const data = await response.json();
 
         if (!response.ok || data?.error) {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'post-fix',hypothesisId:'L',location:'src/hooks/use-agent-pipeline.ts:runStep:error',message:'run-step returned error',data:{stepId,status:response.status,ok:response.ok,apiError:typeof data?.error==="string"?data.error:null},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion agent log
           throw new Error(
             (typeof data?.error === "string" && data.error) ||
             `Failed to run step (status ${response.status}).`
           );
         }
+
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'post-fix',hypothesisId:'M',location:'src/hooks/use-agent-pipeline.ts:runStep:success',message:'run-step succeeded',data:{stepId,responseTextChars:typeof data?.responseText==="string"?data.responseText.length:null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
 
         const producedVariables: Record<string, string> = data.producedVariables ?? {};
 
@@ -1033,6 +1101,8 @@ export function useAgentPipeline() {
                 NarrationScript: "narrationScript",
                 Title: "title",
                 Description: "description",
+                YoutubeTags: "youtubeTags",
+                Chapters: "chapters",
                 ThumbnailPrompt: "thumbnailPrompt",
               };
               const field = fieldMap[key];
@@ -1054,7 +1124,7 @@ export function useAgentPipeline() {
           const totals = calculateStepTotals(updatedSteps);
           const sessionTotals = getAccumulatedSessionTotals(prev, data.metrics);
           
-          return {
+          const result: PipelineState = {
             ...nextPipeline,
             totalTokens: totals.totalTokens,
             totalCostUsd: totals.totalCostUsd,
@@ -1063,6 +1133,11 @@ export function useAgentPipeline() {
             cumulativeTokens: sessionTotals.cumulativeTokens,
             cumulativeCostUsd: sessionTotals.cumulativeCostUsd,
           };
+
+          // Keep the ref in sync immediately so auto-save doesn't read stale state.
+          pipelineRef.current = result;
+
+          return result;
         });
 
         autoSave.queueAutoSave();

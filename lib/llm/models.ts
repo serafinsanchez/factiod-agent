@@ -6,6 +6,7 @@ export const SUPPORTED_MODEL_IDS: readonly ModelId[] = [
   DEFAULT_MODEL_ID,
   'claude-opus-4.5',
   'gpt-5.1-2025-11-13',
+  'gpt-5.2',
   'kimik2-thinking',
   'gemini-3-pro',
 ] as const;

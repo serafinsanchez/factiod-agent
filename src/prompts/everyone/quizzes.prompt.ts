@@ -1,16 +1,36 @@
-export const QUIZZES_PROMPT_TEMPLATE = `I’m preparing a youtube video that teaches in a fun and engaging way. The audience is teens through adults, but it must remain family-friendly and appropriate for kids. I want my video to have pauses for two quizzes. 
+export const QUIZZES_PROMPT_TEMPLATE = `I'm creating a YouTube video that teaches in a fun, engaging, and family-friendly way. The audience is teens to adults, with all content suitable for children. The video includes two quiz pauses to enhance engagement.
 
-Here is my video topic
-— [Topic] —
-Here are the key concepts in the video
-— [KeyConcepts] —
+Here is my video topic:
+[Topic]
+Here are the key concepts:
+[KeyConcepts]
 
-Here is the script for the video hook 
-— [HookScript] —
+Here is the script for the video hook:
+[HookScript]
 
-Please write two questions and their answers for me. Each quiz should have one four option multiple-choice or a true-or-false question. Regardless of type, it must be easy to follow for a broad audience.
+Task:
+Generate three quiz questions, each on a different key concept. For each quiz, write either a four-option multiple-choice or a true/false question. Questions should be clear and suitable for a broad audience.
 
-True/false: one TRUE option and one FALSE option.  
-Multiple choice: 4 options, one correct.
+- True/false: include TRUE and FALSE as options.
+- Multiple-choice: provide four options, one correct answer.
 
-Silently think about your choices and evaluate them for pedagogical importance and viewer engagement. Output only the quiz questions and answers.`;
+Internally assess questions for educational value and engagement; do not output this.
+
+Output only the quiz questions and answers, no extra text. Use this format:
+
+Question 1: [Your question text]
+Options:
+A) [Option A answer]
+B) [Option B answer]
+C) [Option C answer]
+D) [Option D answer] (if multiple choice)
+Correct Answer: [Correct option letter]
+
+OR for true/false:
+Question 1: [Your question text]
+Options:
+A) TRUE
+B) FALSE
+Correct Answer: [Correct option letter]
+
+Provide all three questions and answers in this format only.`;

@@ -1,36 +1,37 @@
-export const HOOK_PROMPT_TEMPLATE = `Video Topic: [Topic]
+export const HOOK_PROMPT_TEMPLATE = `Developer: Video Topic: [Topic]
 Key Concepts: [KeyConcepts]
 
-Task
-Write one polished YouTube opening hook for the topic above.
+Task:
+Write a YouTube opening hook for the topic above.
+
 Length: 20–30 seconds spoken.
-Audience: Elementary-aged kids (6–9) and ESL editors—keep English simple and clear (Grade 2–3 level).
-You may think through options silently, but show only the final script.
+Audience: Elementary-aged kids (6–9) and ESL editors—use clear English at Grade 2–3 level.
+Only output the final script.
 
-Structure (use this flow)
-The Grab — a surprising fact, a “Have you ever wondered…?” question, or a funny/relatable analogy.
+Structure:
+1. The Grab: Start with a surprising fact, a 'Have you ever wondered...?' question, or a funny/relatable analogy.
+2. The Adventure: In 2–3 short sentences, preview what will be explored or done.
+3. The Promise: State what the viewer will learn or be able to do by the end.
 
-The Adventure — in 2–3 short sentences, preview what we’ll explore or do (mini-outline).
+Style:
+- Short sentences. Use concrete, kid-friendly words.
+- Speak to the viewer as “you” or “we.”
+- Keep the tone vivid, visual, and positive.
+- If introducing a new term, explain it simply first, then introduce the term ("we call that...").
 
-The Promise — what the viewer will know or be able to do by the end.
+Guardrails:
+- No clickbait phrases (e.g., “you won’t believe,” “craziest,” “insane,” “mind-blowing,” “secret,” etc.).
+- No unrealistic or magical claims—stay true to the outline.
+- No calls to action (“like/subscribe”), no FOMO (“watch to the end or else”).
+- One exclamation point maximum. No ALL CAPS.
+- No emojis, unless the tone is silly (then, one tasteful emoji maximum).
+- If hands-on, mention safety or adult supervision if needed.
+- The hook must match the mini-outline—no bait-and-switch.
 
-Style Rules
-Short sentences. Concrete, kid-friendly words. Speak to the viewer as “you” or “we.”
-Be vivid, visual, and positive.
-If a real term is needed, introduce it gently (“we call that…”) after a simple explanation.
+Internal Process (do not output):
+- Brainstorm three variants (surprise / question / analogy).
+- Rate each on Curiosity, Clarity, and Energy.
+- Select and polish the best one.
 
-Anti-Spam & Brand-Safety Guardrails (strict)
-No clickbait phrases: avoid “you won’t believe,” “craziest,” “insane,” “mind-blowing,” “secret” etc.
-No unrealistic promises or magic claims; stay accurate to the outline.
-No calls to action like “like/subscribe,” no FOMO (“watch to the end or else”).
-No shouty punctuation (max one exclamation if any), no ALL CAPS.
-Emojis: avoid by default; if tone is “silly,” use at most one tasteful emoji.
-Safety first: if demonstrating something hands-on, mention simple safety or adult help when needed.
-The hook must match the outline—no bait-and-switch.
-
-Process (silent—do not show)
-Brainstorm 3 variants (surprise / question / analogy).
-Rate each for Curiosity, Clarity, Energy.
-Choose the best and polish.
-
-Output only the final spoken hook script.`;
+Output:
+Only the final spoken hook script. No extra commentary.`;

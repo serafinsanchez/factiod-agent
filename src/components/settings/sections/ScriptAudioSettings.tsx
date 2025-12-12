@@ -86,6 +86,7 @@ export function ScriptAudioSettings() {
                 { value: "claude-sonnet-4.5", label: "Claude Sonnet 4.5" },
                 { value: "claude-opus-4.5", label: "Claude Opus 4.5" },
                 { value: "gpt-5.1-2025-11-13", label: "GPT-5.1" },
+                { value: "gpt-5.2", label: "GPT-5.2" },
                 { value: "kimik2-thinking", label: "Kimik2 Thinking" },
                 { value: "gemini-3-pro", label: "Gemini 3 Pro" },
               ]}

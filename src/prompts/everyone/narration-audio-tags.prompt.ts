@@ -1,54 +1,72 @@
 export const NARRATION_AUDIO_TAGS_PROMPT_TEMPLATE = `You are an expert at adding expressive voice direction tags for ElevenLabs v3 text-to-speech.
 
-PRIMARY GOAL: Add voice tags to make the narration engaging and dynamic, while STRICTLY preserving all original spoken words. Do not remove, reorder, or rewrite any words.
+PRIMARY GOAL
+Add voice direction tags to make the narration engaging and dynamic while STRICTLY preserving all original spoken words in the exact same order.
 
-ABOUT ELEVENLABS V3 TAGS:
-ElevenLabs v3 can interpret almost ANY descriptive tag you put in brackets. Be creative and match the tag to the emotional context of each line. Tags can describe:
+You are allowed to:
+- Insert bracketed tags (ONLY).
 
-- **Emotions**: [intrigued], [fascinated], [amazed], [impressed], [skeptical], [concerned], [relieved], [satisfied], [contemplative]
-- **Delivery**: [whispers], [softly], [dramatically], [knowingly], [matter-of-factly], [emphatically], [dryly], [wryly], [confidently]
-- **Reactions**: [laughs], [chuckles], [sighs], [gasps]
-- **Tone**: [reassuringly], [conspiratorially], [thoughtfully], [earnestly], [pointedly], [warmly], [archly]
+You are NOT allowed to:
+- Remove, reorder, or rewrite any words.
+- Merge/split lines, or change the line order.
+- Add any commentary, headings, or extra text outside the script.
 
-These are just examples — you can use any descriptive word that fits the moment!
+ABOUT ELEVENLABS V3 TAGS
+ElevenLabs v3 can interpret almost ANY descriptive tag in square brackets. Use tags creatively to match the moment.
 
-RULES:
-- CRITICAL: Tags MUST use SQUARE BRACKETS like [excited] — NEVER use angle brackets like <excited>
-- Tag grammar is STRICT: exactly one word inside square brackets: [word]
-  - The word must not contain spaces or commas.
-  - Use letters with optional hyphens only (examples: [knowingly], [half-serious], [super-impressed]).
-- Per line: add at most ONE tag total.
-- CRITICAL: You MUST add MANY tags throughout the script — most lines should have a tag!
-  - Target: 50–70% of non-empty lines MUST have a tag.
-  - Every paragraph should have at least one tag, often more.
-  - If you only add a few tags scattered throughout, that is WRONG — be generous!
-  - Choose tags that match the content: use [fascinated] for interesting facts, [knowingly] for insider insights, [earnestly] for important points, [dramatically] for big reveals, [warmly] for explanations.
-  - Vary your tags — don't repeat the same tag too often.
-- Do NOT output tag lists or multiple tags in one bracket.
-- Place the tag immediately before the phrase it modifies.
-- You may add emphasis with capitalization, question marks, exclamation marks, or ellipses, but DO NOT change any words.
+TAG SYNTAX (CRITICAL)
+- Tags MUST use SQUARE BRACKETS: [tag]
+- Exactly ONE token inside brackets.
+- Token must match: letters with optional hyphens only (no spaces, commas, numbers): examples: [intrigued] [matter-of-factly] [half-serious]
+- At most ONE tag per line total.
+
+TAG DENSITY (CRITICAL — ENFORCE THIS)
+The common failure mode is “too few tags”. Do NOT do that.
+- Count non-empty lines.
+- If non-empty lines <= 6: tag ALL non-empty lines except at most 1.
+- If non-empty lines > 6: tag at least 60% of non-empty lines (aim ~70%).
+
+PLACEMENT (MAKE IT CONSISTENT)
+Default placement is safest and works best for long lines:
+- Put the tag at the START of the line, immediately before the first spoken word.
+- If a line contains multiple sentences or emotional beats, you STILL must use ONLY ONE tag for the entire line. Pick the single best tag and do not add any others.
+- Exception for quiz/list labels: if a line begins with a label like "Question 1:", "A)", "B)", "C)", "D)", place the tag immediately AFTER the label, e.g.
+  - Question 1: [curious] Why does grass appear green?
+  - B) [confident] Chlorophyll molecules reflect green light...
+- Do NOT place tags at the very end of the line. Tags should lead into the delivery.
+
+TAG CHOICE GUIDELINES (VARY THEM)
+Pick tags that fit the content and vary them (avoid repeating the same tag within ~5 lines):
+- Interesting facts / explanations: [fascinated] [thoughtful] [warmly]
+- Big reveals / key takeaways: [dramatically] [emphatically] [earnestly]
+- Rhetorical questions / hooks: [intrigued] [curious] [conspiratorially]
+- Quizzes: [playfully] for quiz intros, [encouragingly] for correct-answer reveals, [matter-of-factly] for reading options
+- Light reactions when appropriate: [chuckles] [gasps] [sighs]
+
+SAFETY
 - Do not introduce or imply sensitive topics.
 
-GOOD examples:
-- [fascinated] The human brain processes information faster than any supercomputer.
-- Here's where it gets interesting. [knowingly]
-- If you guessed B, you nailed it. [warmly]
-- [whispers] Most people completely overlook this detail...
-- [dramatically] And that discovery changed everything we thought we knew.
-- But here's the real question... [intrigued]
-- [dryly] Turns out, the experts were wrong.
-- [earnestly] This is why it actually matters.
-
-BAD examples (do not do these):
-- <confident> This is important... (WRONG: uses angle brackets instead of square brackets)
-- [confident and clear] This is important... (multiple words)
-- [short pause] Let me explain... (contains space)
-- [impressed][amazed] That's incredible... (multiple tags)
-- [impressed] [amazed] That's incredible... (multiple tags)
-
-OUTPUT FORMAT (strict):
-- Return ONLY the enhanced narration text with tags added.
-- Keep the exact same number of lines, and the same line order, as the input. Do not merge or split lines.
+OUTPUT FORMAT (STRICT)
+- Return ONLY the narration text with tags added.
+- Keep the exact same number of lines and the same line order as the input. Do not merge or split lines.
 
 Narration Script:
-— [NarrationScript] —`;
+[NarrationScript]`;
+
+// Converts already-tagged (or untagged) narration into a clean block of text that
+// can be pasted into ElevenLabs TTS as-is, without changing spoken words.
+export const ELEVENLABS_V3_TTS_PASTEREADY_PROMPT_TEMPLATE = `You are an expert at preparing text for ElevenLabs v3 text-to-speech.
+
+PRIMARY GOAL
+Return a paste-ready narration block for ElevenLabs v3.
+
+RULES (CRITICAL)
+- Preserve the exact spoken words and their order.
+- Preserve any existing ElevenLabs tags in square brackets (e.g. [warmly]) exactly as-is.
+- Do NOT add new words.
+- Remove ONLY non-spoken formatting artifacts if present (examples: leading/trailing **, stray markdown bullets, accidental file-path annotations like "@src/...").
+- Keep the exact same line order as the input. Do not merge or split lines.
+- Output ONLY the final paste-ready text (no commentary).
+
+Input Text:
+[NarrationScript]`;

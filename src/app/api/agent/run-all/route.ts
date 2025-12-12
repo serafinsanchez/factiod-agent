@@ -44,8 +44,118 @@ const VARIABLE_TO_PIPELINE_FIELD: Partial<Record<VariableKey, keyof PipelineStat
   NarrationScript: 'narrationScript',
   Title: 'title',
   Description: 'description',
+  YoutubeTags: 'youtubeTags',
+  Chapters: 'chapters',
   ThumbnailPrompt: 'thumbnailPrompt',
 };
+
+type TitleDescriptionSections = {
+  title: string;
+  description: string;
+  youtubeTags: string;
+  chapters: string;
+};
+
+function normalizeLineEndings(text: string) {
+  return text.replace(/\r\n/g, '\n');
+}
+
+function coerceYoutubeTagsMaxChars(tags: string, maxChars: number): string {
+  const trimmed = tags.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+
+  const clipped = trimmed.slice(0, maxChars);
+  const lastComma = clipped.lastIndexOf(',');
+  if (lastComma > 0) {
+    return clipped
+      .slice(0, lastComma)
+      .replace(/,+\s*$/, '')
+      .trim();
+  }
+
+  return clipped.trim();
+}
+
+function parseTitleDescriptionResponse(text: string): TitleDescriptionSections {
+  const normalized = normalizeLineEndings(text ?? '');
+  const lines = normalized.split('\n');
+
+  type HeaderKey = 'TITLE' | 'DESCRIPTION' | 'TAGS' | 'CHAPTERS';
+  const headerOrder: HeaderKey[] = ['TITLE', 'DESCRIPTION', 'TAGS', 'CHAPTERS'];
+  const headerIndices: Record<HeaderKey, number> = {
+    TITLE: -1,
+    DESCRIPTION: -1,
+    TAGS: -1,
+    CHAPTERS: -1,
+  };
+  const inlineFirstLine: Partial<Record<HeaderKey, string>> = {};
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const rawLine = lines[i] ?? '';
+    const trimmed = rawLine.trim();
+    const match = trimmed.match(/^(TITLE|DESCRIPTION|TAGS|CHAPTERS):\s*(.*)$/i);
+    if (!match) continue;
+
+    const key = match[1]!.toUpperCase() as HeaderKey;
+    if (headerIndices[key] !== -1) continue;
+
+    headerIndices[key] = i;
+    const inline = (match[2] ?? '').trim();
+    if (inline) inlineFirstLine[key] = inline;
+  }
+
+  const sections: TitleDescriptionSections = {
+    title: '',
+    description: '',
+    youtubeTags: '',
+    chapters: '',
+  };
+
+  const foundHeaders = headerOrder
+    .map((key) => ({ key, index: headerIndices[key] }))
+    .filter((entry) => entry.index >= 0)
+    .sort((a, b) => a.index - b.index);
+
+  if (foundHeaders.length === 0) {
+    const [firstLine = '', ...rest] = normalized.split('\n');
+    sections.title = firstLine.trim();
+    sections.description = rest.join('\n').trim();
+  } else {
+    for (let i = 0; i < foundHeaders.length; i += 1) {
+      const current = foundHeaders[i]!;
+      const next = foundHeaders[i + 1];
+      const start = current.index + 1;
+      const end = next ? next.index : lines.length;
+      const bodyLines = lines.slice(start, end);
+      const headerInline = inlineFirstLine[current.key];
+      const body =
+        (headerInline ? [headerInline, ...bodyLines] : bodyLines).join('\n').trim();
+
+      if (current.key === 'TITLE') sections.title = body;
+      if (current.key === 'DESCRIPTION') sections.description = body;
+      if (current.key === 'TAGS') sections.youtubeTags = body;
+      if (current.key === 'CHAPTERS') sections.chapters = body;
+    }
+  }
+
+  sections.youtubeTags = coerceYoutubeTagsMaxChars(
+    sections.youtubeTags
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+    500,
+  );
+  sections.chapters = sections.chapters
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .trim();
+
+  return sections;
+}
 
 async function getSettingsDefaultWordCount(): Promise<number> {
   try {
@@ -197,10 +307,12 @@ async function runPipelineStep(
   let producedVariables = { ...result.producedVariables };
 
   if (step.id === 'titleDescription') {
-    const [firstLine = '', ...rest] = result.responseText.split('\n');
+    const { title, description, youtubeTags, chapters } = parseTitleDescriptionResponse(result.responseText);
     producedVariables = {
-      Title: firstLine.trim(),
-      Description: rest.join('\n').trim(),
+      Title: title,
+      Description: description,
+      YoutubeTags: youtubeTags,
+      Chapters: chapters,
     };
   } else if (step.id === 'scriptQA') {
     const finalScript = extractFinalScript(result.responseText);

@@ -1,3 +1,12 @@
-export const KEY_CONCEPTS_PROMPT_TEMPLATE = `You are an expert at scripting educational kids videos. You have great pedagogical skills and you know how to make things engaging for elementary aged kids. Today you are preparing an outline on a new video. Here is the video topic. 
-— [Topic] —
-The video will be about 10 minutes long. Which key concepts should we cover during that time? Silently many possible concepts for their pedagogical importance and their interest to children. Pick the topics that are most interesting to kids (heavier weighted) and have some pedagogical importance. The kids are age 5 to 9. Narrow it to 3 key concepts and output those. Do not output anything besides the topic of the three key concepts.`;
+export const KEY_CONCEPTS_PROMPT_TEMPLATE = `# Role and Objective
+- Script writer for 10-minute educational videos aimed at children ages 5–9, with focus on content selection and pedagogy.
+# Instructions
+- Video Topic: [Topic]
+- Outline a video on the topic above.
+- Consider multiple possible concepts; evaluate each for pedagogical value and appeal to children.
+- Prioritize concepts that are both engaging and educationally valuable.
+- Select three key concepts for the video's structure.
+# Output Format
+- List only the titles or short descriptions of the three chosen key concepts.
+# Stop Conditions
+- Stop after listing the three concepts. Output nothing else.`;

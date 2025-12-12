@@ -14,6 +14,11 @@ export const PRICES: Record<ModelId, TokenPricing> = {
     cachedInput: 0.125, // USD per 1M cached input tokens (cache hit)
     output: 10.0, // USD per 1M output tokens
   },
+  'gpt-5.2': {
+    input: 1.75, // USD per 1M input tokens (cache miss)
+    cachedInput: 0.175, // USD per 1M cached input tokens (cache hit)
+    output: 14.0, // USD per 1M output tokens
+  },
   'kimik2-thinking': {
     input: 0.6, // USD per 1M input tokens (cache miss)
     cachedInput: 0.15, // USD per 1M cached input tokens (cache hit)

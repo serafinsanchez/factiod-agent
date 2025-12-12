@@ -10,6 +10,8 @@ export type VariableFieldKey = Extract<
   | "narrationScript"
   | "title"
   | "description"
+  | "youtubeTags"
+  | "chapters"
   | "thumbnailPrompt"
 >;
 
@@ -42,6 +44,8 @@ export const VARIABLE_KEY_TO_PIPELINE_FIELD: Partial<Record<VariableKey, Variabl
   NarrationScript: "narrationScript",
   Title: "title",
   Description: "description",
+  YoutubeTags: "youtubeTags",
+  Chapters: "chapters",
   ThumbnailPrompt: "thumbnailPrompt",
   // Note: ProductionScript, SceneImagePrompts, SceneVideoPrompts are JSON outputs
   // and stored as structured data, not simple strings
@@ -61,6 +65,8 @@ export const VARIABLE_LABELS: Record<VariableKey, string> = {
   SceneVideoPrompts: "Scene video prompts",
   Title: "Title",
   Description: "Description",
+  YoutubeTags: "YouTube tags",
+  Chapters: "Chapters",
   ThumbnailPrompt: "Thumbnail prompt",
 };
 
@@ -132,6 +138,16 @@ export const VARIABLE_DEFINITIONS: VariableDefinition[] = [
     key: "Description",
     label: VARIABLE_LABELS.Description,
     description: "Channel description that includes promo copy.",
+  },
+  {
+    key: "YoutubeTags",
+    label: VARIABLE_LABELS.YoutubeTags,
+    description: "Comma-separated YouTube upload tags (max 500 characters).",
+  },
+  {
+    key: "Chapters",
+    label: VARIABLE_LABELS.Chapters,
+    description: "Estimated chapter timestamps to paste into the YouTube description.",
   },
   {
     key: "ThumbnailPrompt",

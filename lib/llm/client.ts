@@ -16,6 +16,7 @@ type CallModelResult = {
 
 const MODEL_NAME_BY_ID: Record<ModelId, string> = {
   'gpt-5.1-2025-11-13': 'gpt-5.1-2025-11-13',
+  'gpt-5.2': 'gpt-5.2',
   'kimik2-thinking': 'kimi-k2-thinking',
   'claude-sonnet-4.5': 'claude-sonnet-4-5',
   'claude-opus-4.5': 'claude-opus-4-5-20251101',
@@ -199,16 +200,25 @@ async function callOpenAI(
   try {
     const client = getOpenAIClient();
 
-    const response = await client.chat.completions.create({
+    // OpenAI is migrating some newer models to `max_completion_tokens`.
+    // Passing `max_tokens` can hard-fail on those models.
+    const isMaxCompletionTokensModel = model.startsWith('gpt-5');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const createParams: any = {
       model,
-      max_tokens: maxTokens ?? 4096,
       messages: [
         {
           role: 'user',
           content: prompt,
         },
       ],
-    });
+      ...(isMaxCompletionTokensModel
+        ? { max_completion_tokens: maxTokens ?? 4096 }
+        : { max_tokens: maxTokens ?? 4096 }),
+    };
+
+    const response = await client.chat.completions.create(createParams);
 
     const choice = response.choices[0];
     const text = choice?.message?.content ?? '';

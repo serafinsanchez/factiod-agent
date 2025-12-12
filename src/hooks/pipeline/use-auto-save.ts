@@ -125,9 +125,25 @@ export function useAutoSave({
 
         const mergedCharacterReferenceImage = prev.characterReferenceImage || data.characterReferenceImage;
 
-        return ensureSessionTotals({
+        const preferNonEmpty = (serverValue: unknown, prevValue: unknown) => {
+          const serverStr = typeof serverValue === "string" ? serverValue : undefined;
+          if (serverStr && serverStr.trim().length > 0) return serverStr;
+          const prevStr = typeof prevValue === "string" ? prevValue : undefined;
+          return prevStr;
+        };
+
+        const merged = ensureSessionTotals({
           ...prev,
           ...data,
+          // Important: prevent auto-save from wiping local outputs when the ref snapshot lags.
+          keyConcepts: preferNonEmpty(data.keyConcepts, prev.keyConcepts),
+          hookScript: preferNonEmpty(data.hookScript, prev.hookScript),
+          quizInfo: preferNonEmpty(data.quizInfo, prev.quizInfo),
+          videoScript: preferNonEmpty(data.videoScript, prev.videoScript),
+          narrationScript: preferNonEmpty(data.narrationScript, prev.narrationScript),
+          title: preferNonEmpty(data.title, prev.title),
+          description: preferNonEmpty(data.description, prev.description),
+          thumbnailPrompt: preferNonEmpty(data.thumbnailPrompt, prev.thumbnailPrompt),
           steps: mergedSteps,
           sceneAssets: mergedSceneAssets,
           characterReferenceImage: mergedCharacterReferenceImage,
@@ -135,6 +151,8 @@ export function useAutoSave({
             data.narrationModelId ?? prev.narrationModelId,
           ),
         });
+
+        return merged;
       });
 
       const nextSelectedId =

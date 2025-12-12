@@ -15,11 +15,12 @@ interface OutputPreviewProps {
   actions: UseAgentPipelineReturn["actions"];
 }
 
-export function OutputPreview({ state, derived, actions }: OutputPreviewProps) {
+export function OutputPreview({ state, actions }: OutputPreviewProps) {
   const script = state.pipeline.videoScript?.trim();
-  const narration = state.pipeline.narrationScript?.trim();
   const title = state.pipeline.title?.trim();
   const description = state.pipeline.description?.trim();
+  const youtubeTags = state.pipeline.youtubeTags?.trim();
+  const chapters = state.pipeline.chapters?.trim();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const contentRegionId = "final-outputs-content";
   const thumbnailSrc =
@@ -71,15 +72,32 @@ export function OutputPreview({ state, derived, actions }: OutputPreviewProps) {
         </AssetCard>
 
         <AssetCard title="Title & description">
-          {title || description ? (
-            <div className="space-y-2 text-sm text-zinc-100">
-              {title && <p className="text-lg font-semibold text-white">{title}</p>}
-              {description && (
-                <p className="whitespace-pre-wrap text-zinc-300">{description}</p>
-              )}
+          {title || description || youtubeTags || chapters ? (
+            <div className="space-y-4 text-sm text-zinc-100">
+              <div className="space-y-2">
+                {title && <p className="text-lg font-semibold text-white">{title}</p>}
+                {description && (
+                  <p className="whitespace-pre-wrap text-zinc-300">{description}</p>
+                )}
+              </div>
+
+              <div className="grid gap-3">
+                <CopyableTextBlock
+                  label="YouTube tags"
+                  value={youtubeTags}
+                  copyButtonLabel="Copy tags"
+                  emptyText="Generate the publish stage to get YouTube upload tags."
+                />
+                <CopyableTextBlock
+                  label="Video chapters"
+                  value={chapters}
+                  copyButtonLabel="Copy chapters"
+                  emptyText="Generate the publish stage to get estimated video chapters."
+                />
+              </div>
             </div>
           ) : (
-            <EmptyPlaceholder message="Generate the publish stage to get a title & description." />
+            <EmptyPlaceholder message="Generate the publish stage to get a title, description, tags, and chapters." />
           )}
         </AssetCard>
 
@@ -144,6 +162,65 @@ export function OutputPreview({ state, derived, actions }: OutputPreviewProps) {
         </AssetCard>
       </div>
     </div>
+  );
+}
+
+function CopyableTextBlock({
+  label,
+  value,
+  emptyText,
+  copyButtonLabel = "Copy",
+}: {
+  label: string;
+  value?: string | null;
+  emptyText: string;
+  copyButtonLabel?: string;
+}) {
+  const prepared = (value ?? "").trim();
+  const hasValue = prepared.length > 0;
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (!hasValue) return;
+    try {
+      await navigator.clipboard.writeText(prepared);
+      setIsCopied(true);
+      window.setTimeout(() => setIsCopied(false), 1500);
+    } catch {
+      setIsCopied(false);
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-zinc-900/60 bg-zinc-900/20 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
+          {label}
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-8 rounded-full border border-white/20 bg-transparent px-4 text-[0.65rem] font-semibold uppercase tracking-[0.25em] text-white hover:border-white/40 hover:bg-white/10 hover:text-white disabled:opacity-60"
+          onClick={handleCopy}
+          disabled={!hasValue}
+        >
+          {isCopied ? "Copied" : copyButtonLabel}
+        </Button>
+        <span className="sr-only" aria-live="polite" role="status">
+          {isCopied ? `${label} copied to clipboard` : ""}
+        </span>
+      </div>
+      <div className="mt-2">
+        {hasValue ? (
+          <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-zinc-100">
+            {prepared}
+          </pre>
+        ) : (
+          <p className="text-sm text-zinc-500">{emptyText}</p>
+        )}
+      </div>
+    </section>
   );
 }
 

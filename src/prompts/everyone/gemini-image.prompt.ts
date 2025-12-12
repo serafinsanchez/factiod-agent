@@ -17,6 +17,24 @@ export function buildGeminiImagePrompt({
   referenceImage?: string;
   variationTag: string;
 }): { structuredPrompt: string; contentParts: GeminiContentPart[] } {
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'C',location:'src/prompts/everyone/gemini-image.prompt.ts:19',message:'buildGeminiImagePrompt entry',data:{skipTextOverlay,hasReferenceImage:Boolean(referenceImage),variationTagLen:typeof variationTag==='string'?variationTag.length:null,creativeBriefLen:typeof creativeBrief==='string'?creativeBrief.length:null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
+  // Match straight quotes, curly quotes, or unquoted text after "Text Overlay:"
+  const overlayMatch = typeof creativeBrief === "string"
+    ? creativeBrief.match(/Text Overlay:\s*["""\u201C\u201D]?([^"""\u201C\u201D\n]+)["""\u201C\u201D]?/i)
+    : null;
+  const negativeLineMatch = typeof creativeBrief === "string"
+    ? creativeBrief.match(/Negative Prompts:\s*(.+)\s*$/im)
+    : null;
+  const extractedOverlay = overlayMatch?.[1] ?? null;
+  const negativeLine = negativeLineMatch?.[1] ?? null;
+
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'A',location:'src/prompts/everyone/gemini-image.prompt.ts:33',message:'Extracted overlay + negative checks',data:{extractedOverlay,negativeHasText:typeof negativeLine==='string'?/\btext\b/i.test(negativeLine):null,negativeHasCaptions:typeof negativeLine==='string'?/\bcaptions?\b/i.test(negativeLine):null,negativeHasWords:typeof negativeLine==='string'?/\bwords?\b/i.test(negativeLine):null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
   // Build the main instruction block.
   const promptLines: string[] = skipTextOverlay
     ? [
@@ -40,22 +58,51 @@ export function buildGeminiImagePrompt({
 
   // Only add text overlay instruction for thumbnails, not scene images
   if (!skipTextOverlay) {
-    promptLines.push(
-      "- Text overlay: add a bold, 2-3 word caption derived from the brief in the upper-left, high-contrast, legible."
-    );
+    // Use EITHER the exact overlay OR the generic instruction - never both
+    if (typeof extractedOverlay === "string" && extractedOverlay.trim().length > 0) {
+      promptLines.push(
+        `- Text overlay: render the EXACT text "${extractedOverlay.trim()}" verbatim in the upper-left, bold sans-serif, thick outline, high contrast.`
+      );
+    } else {
+      promptLines.push(
+        "- Text overlay: add a bold, 3-4 word caption derived from the brief in the upper-left, high-contrast, legible."
+      );
+    }
+
+    // If the creative brief's negative list contains "text/captions", clarify it's about EXTRA text only.
+    if (
+      typeof negativeLine === "string" &&
+      /\b(text|captions?|labels?|words?)\b/i.test(negativeLine)
+    ) {
+      promptLines.push(
+        "- IMPORTANT: Any 'no text/captions/labels/words' constraints apply only to EXTRA/accidental text; the overlay text is required."
+      );
+    }
   }
+
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'B',location:'src/prompts/everyone/gemini-image.prompt.ts:66',message:'Overlay instruction currently used',data:{skipTextOverlay,extractedOverlay,overlayInstruction:skipTextOverlay?null:'derived-from-brief'},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   promptLines.push(
     "- Camera & composition: cinematic wide shot, shallow depth of field, rule-of-thirds framing, plenty of breathing room.",
     skipTextOverlay
       ? "- Safety & negatives: family-friendly, no gore, no weapons, no logos, no creepy vibes, absolutely NO text, captions, labels, or words anywhere in the image."
       : "- Safety & negatives: family-friendly, no gore, no weapons, no extra logos, no creepy vibes, no additional text beyond the overlay.",
-    `- Variation tag: ${variationTag}. Treat this tag as a randomness source so every run looks different, but never draw or print it.`,
+    "- Create a unique composition different from previous generations.",
     "Creative brief:",
     `\"\"\"${creativeBrief}\"\"\"`
   );
 
   const structuredPrompt = promptLines.join("\n");
+
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'post-fix',hypothesisId:'B2',location:'src/prompts/everyone/gemini-image.prompt.ts:91',message:'Structured prompt contains exact-overlay enforcement',data:{hasExtractedOverlay:typeof extractedOverlay==='string'&&extractedOverlay.trim().length>0,includesExactOverlayLine:structuredPrompt.toLowerCase().includes('render the exact text'),includesImportantNegativesOverride:structuredPrompt.includes("Any 'no text/captions/labels/words' constraints")},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'B',location:'src/prompts/everyone/gemini-image.prompt.ts:83',message:'Structured prompt summary',data:{structuredPromptLen:structuredPrompt.length,includesExactOverlay:typeof extractedOverlay==='string'&&extractedOverlay.length>0?structuredPrompt.toLowerCase().includes(extractedOverlay.toLowerCase()):null,includesDerivedOverlayInstruction:structuredPrompt.includes('derived from the brief')},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   const contentParts: GeminiContentPart[] = [{ text: structuredPrompt }];
 

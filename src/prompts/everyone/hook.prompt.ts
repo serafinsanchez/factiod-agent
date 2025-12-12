@@ -1,36 +1,61 @@
-export const HOOK_PROMPT_TEMPLATE = `Video Topic: [Topic]
-Key Concepts: [KeyConcepts]
+export const HOOK_PROMPT_TEMPLATE = `# YouTube Opening Hook Generator
 
-Task
-Write one polished YouTube opening hook for the topic above.
-Length: 20–30 seconds spoken.
-Audience: General audience (teens + adults)—keep English clear and accessible (avoid slang; define any necessary term quickly). Still keep it family-friendly.
-You may think through options silently, but show only the final script.
+## Role
+You are tasked with generating a polished, engaging YouTube opening hook for a given [Topic] and [KeyConcepts]. Audience: teens and adults. Follow a structured flow for interest, clarity, and safety.
 
-Structure (use this flow)
-The Grab — a surprising fact, a “Have you ever wondered…?” question, or a funny/relatable analogy.
+## Instructions
+- Write a single YouTube opening hook script using the provided [Topic] and [KeyConcepts].
+- Length: 20–30 seconds spoken.
+- Audience: teens and up; use clear, accessible English. No slang. Briefly define special terms ("we call that ...").
+- Keep all content family-friendly.
+- Output only the final script as specified—no brainstorming or scoring in output.
 
-The Adventure — in 2–3 short sentences, preview what we’ll explore or do (mini-outline).
+### Structure (one seamless paragraph)
+1. **Grab:** Start with a surprising fact, a "Have you ever wondered...?" question, or a relevant analogy.
+2. **Adventure:** State in 2–3 short sentences what will be explored or learned.
+3. **Promise:** End with what the viewer will understand or do by the end.
 
-The Promise — what the viewer will know or be able to do by the end.
+### Style
+- Use short sentences; clear, concrete language.
+- Address the viewer: use "you" or "we."
+- Make it vivid and positive.
+- Introduce real terms simply after explanations.
 
-Style Rules
-Short sentences. Concrete, clear words. Speak to the viewer as “you” or “we.”
-Be vivid, visual, and positive.
-If a real term is needed, introduce it gently (“we call that…”) after a simple explanation.
+### Anti-Spam & Brand-Safety
+- Avoid clickbait phrases ("you won’t believe", "insane", etc.).
+- No unrealistic or magical claims; stick to the provided concepts.
+- No calls to action ("like/subscribe") or FOMO.
+- Limit punctuation for emphasis (maximum one exclamation mark); no ALL CAPS.
+- No emojis unless the tone is "silly," and then, use one maximum.
+- For hands-on demos, briefly mention required safety or adult help.
+- The hook must precisely fit the given topic—no bait-and-switch.
 
-Anti-Spam & Brand-Safety Guardrails (strict)
-No clickbait phrases: avoid “you won’t believe,” “craziest,” “insane,” “mind-blowing,” “secret” etc.
-No unrealistic promises or magic claims; stay accurate to the outline.
-No calls to action like “like/subscribe,” no FOMO (“watch to the end or else”).
-No shouty punctuation (max one exclamation if any), no ALL CAPS.
-Emojis: avoid by default; if tone is “silly,” use at most one tasteful emoji.
-Safety first: if demonstrating something hands-on, mention simple safety or adult help when needed.
-The hook must match the outline—no bait-and-switch.
+### Topic/KeyConcepts Guardrail
+If either Topic or KeyConcepts is missing or blank, output exactly the following JSON (and nothing else):
+{"error": "Missing required field: [Topic/KeyConcepts]"}
 
-Process (silent—do not show)
-Brainstorm 3 variants (surprise / question / analogy).
-Rate each for Curiosity, Clarity, Energy.
-Choose the best and polish.
+## Process (internal, not user-visible)
+1. Brainstorm three hook variants.
+2. Rate them for Curiosity, Clarity, and Energy.
+3. Choose the best; polish it into the final script.
 
-Output only the final spoken hook script.`;
+## Output Format
+- **Simple workflow:** Output only the finished hook script as plain text—one paragraph, following the flow. Do not strcutre for markdown, and do not add any extra text.
+- **Structured workflow:** If specifically requested, output JSON in this format:
+{
+  "Topic": "[Topic]",
+  "KeyConcepts": "[KeyConcepts]",
+  "Grab": "...",
+  "Adventure": "...",
+  "Promise": "...",
+  "FullHook": "[final, fluent single-paragraph hook]"
+}
+- **Error Handling:** As above, if Topic or KeyConcepts is missing or blank, output only:
+{"error": "Missing required field: [Topic/KeyConcepts]"}
+
+## Verbosity
+- Output is concise: one clear spoken paragraph for the hook, unless structured JSON is requested.
+
+## Stop Condition
+- Finish when the polished hook is generated in the requested format. Escalate only if required fields are missing or ambiguous.
+`;

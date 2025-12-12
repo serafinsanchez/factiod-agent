@@ -45,6 +45,12 @@ export function StageView({
 }: StageViewProps) {
   const stepRefs = useRef<Record<StepId, HTMLElement | null>>({} as Record<StepId, HTMLElement | null>);
   const lastVisibleStep = useRef<StepId | null>(null);
+  const [topicDraft, setTopicDraft] = useState(state.pipeline.topic);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTopicDraft(state.pipeline.topic);
+  }, [state.pipeline.topic]);
 
   const stepConfigMap = useMemo(
     () =>
@@ -157,6 +163,48 @@ export function StageView({
               {activeStageEntry.stage.label}
             </p>
             <p className="mt-2 text-sm text-zinc-400">{activeStageEntry.stage.description}</p>
+          </div>
+
+          <div className="rounded-3xl border border-zinc-900/70 bg-zinc-950/70 p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div className="w-full space-y-2">
+                <Label
+                  htmlFor="project-topic"
+                  className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500"
+                >
+                  Topic
+                </Label>
+                <Input
+                  id="project-topic"
+                  value={topicDraft}
+                  onChange={(event) => setTopicDraft(event.target.value)}
+                  placeholder="What is this video about?"
+                  className="h-11 rounded-2xl border border-white/10 bg-zinc-900/70 text-sm text-white placeholder:text-zinc-600 focus-visible:ring-2 focus-visible:ring-white/70"
+                />
+                <p className="text-xs text-zinc-500">
+                  Changing the topic resets Key Concepts, Hook, Quizzes, Script, and other downstream outputs so nothing stale leaks through.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                className="h-11 rounded-2xl bg-white px-5 text-sm font-semibold text-zinc-900 hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={
+                  topicDraft.trim().length === 0 ||
+                  topicDraft.trim() === state.pipeline.topic.trim()
+                }
+                onClick={() => actions.setTopic(topicDraft.trim())}
+              >
+                Update topic
+              </Button>
+            </div>
+            {derived.hasAnyOutputs &&
+              topicDraft.trim().length > 0 &&
+              topicDraft.trim() !== state.pipeline.topic.trim() && (
+                <div className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                  This will clear your current outputs for this project.
+                </div>
+              )}
           </div>
 
           <div className="space-y-6">

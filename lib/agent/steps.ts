@@ -123,8 +123,8 @@ const STEP_CONFIG_BASE: StepConfigBase[] = [
     id: 'titleDescription',
     label: 'Title & Description',
     defaultModel: DEFAULT_MODEL_ID,
-    inputVars: ['Topic', 'KeyConcepts', 'HookScript', 'QuizInfo'],
-    outputVars: ['Title', 'Description'],
+    inputVars: ['Topic', 'KeyConcepts', 'HookScript', 'QuizInfo', 'VideoScript'],
+    outputVars: ['Title', 'Description', 'YoutubeTags', 'Chapters'],
   },
   {
     id: 'thumbnail',

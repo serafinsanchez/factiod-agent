@@ -2,6 +2,7 @@ export type ModelId =
   | 'claude-sonnet-4.5'
   | 'claude-opus-4.5'
   | 'gpt-5.1-2025-11-13'
+  | 'gpt-5.2'
   | 'kimik2-thinking'
   | 'gemini-3-pro';
 export type NarrationModelId = 'eleven_v3' | 'eleven_multilingual_v2';
@@ -62,6 +63,8 @@ export type VariableKey =
   | 'SceneVideoPrompts'
   | 'Title'
   | 'Description'
+  | 'YoutubeTags'
+  | 'Chapters'
   | 'ThumbnailPrompt';
 
 export interface StepConfig {
@@ -108,6 +111,10 @@ export interface PipelineState {
   narrationScript?: string;
   title?: string;
   description?: string;
+  /** Comma-separated YouTube upload tags (max 500 chars). */
+  youtubeTags?: string;
+  /** Video chapters for YouTube description (timestamps + titles). */
+  chapters?: string;
   thumbnailPrompt?: string;
   steps: Record<StepId, StepRunState>;
   model: ModelId;

@@ -259,6 +259,8 @@ export type PipelineStringField =
   | "narrationScript"
   | "title"
   | "description"
+  | "youtubeTags"
+  | "chapters"
   | "thumbnailPrompt";
 
 export const PRODUCED_VARIABLE_TO_PIPELINE_FIELD: Partial<
@@ -271,6 +273,8 @@ export const PRODUCED_VARIABLE_TO_PIPELINE_FIELD: Partial<
   NarrationScript: "narrationScript",
   Title: "title",
   Description: "description",
+  YoutubeTags: "youtubeTags",
+  Chapters: "chapters",
   ThumbnailPrompt: "thumbnailPrompt",
 };
 
@@ -336,6 +340,10 @@ export function getPipelineValueForVariable(
       return pipeline.title;
     case "Description":
       return pipeline.description;
+    case "YoutubeTags":
+      return pipeline.youtubeTags;
+    case "Chapters":
+      return pipeline.chapters;
     case "ThumbnailPrompt":
       return pipeline.thumbnailPrompt;
     default:

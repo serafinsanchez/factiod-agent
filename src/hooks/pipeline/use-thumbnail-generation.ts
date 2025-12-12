@@ -57,6 +57,14 @@ export function useThumbnailGeneration({
       return;
     }
 
+    // #region agent log
+    {
+      const overlayMatch = prompt.match(/Text Overlay:\s*"([^"]+)"/i);
+      const extractedOverlay = overlayMatch?.[1] ?? null;
+      fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run2',hypothesisId:'D',location:'src/hooks/pipeline/use-thumbnail-generation.ts:60',message:'Client about to call generate-image with current thumbnailPrompt',data:{audienceMode:typeof pipeline.audienceMode==='string'?pipeline.audienceMode:null,projectSlug:typeof pipeline.projectSlug==='string'?pipeline.projectSlug:null,topicLen:typeof pipeline.topic==='string'?pipeline.topic.length:null,promptLen:prompt.length,extractedOverlay,promptPreview:prompt.slice(0,220)},timestamp:Date.now()})}).catch(()=>{});
+    }
+    // #endregion
+
     const projectSlug = getOrCreateProjectSlug(pipeline.projectSlug, pipeline.topic);
     const thumbnailPath = buildProjectThumbnailPath(projectSlug, { unique: true });
 

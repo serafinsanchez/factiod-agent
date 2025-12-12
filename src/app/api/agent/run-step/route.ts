@@ -83,6 +83,116 @@ function splitLinesForStrictComparison(text: string) {
   return normalizeLineEndings(text).trimEnd().split('\n');
 }
 
+type TitleDescriptionSections = {
+  title: string;
+  description: string;
+  youtubeTags: string;
+  chapters: string;
+};
+
+function coerceYoutubeTagsMaxChars(tags: string, maxChars: number): string {
+  const trimmed = tags.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+
+  const clipped = trimmed.slice(0, maxChars);
+  const lastComma = clipped.lastIndexOf(',');
+  if (lastComma > 0) {
+    return clipped
+      .slice(0, lastComma)
+      .replace(/,+\s*$/, '')
+      .trim();
+  }
+
+  return clipped.trim();
+}
+
+function parseTitleDescriptionResponse(text: string): TitleDescriptionSections {
+  const normalized = normalizeLineEndings(text ?? '');
+  const lines = normalized.split('\n');
+
+  type HeaderKey = 'TITLE' | 'DESCRIPTION' | 'TAGS' | 'CHAPTERS';
+  const headerOrder: HeaderKey[] = ['TITLE', 'DESCRIPTION', 'TAGS', 'CHAPTERS'];
+  const headerIndices: Record<HeaderKey, number> = {
+    TITLE: -1,
+    DESCRIPTION: -1,
+    TAGS: -1,
+    CHAPTERS: -1,
+  };
+  const inlineFirstLine: Partial<Record<HeaderKey, string>> = {};
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const rawLine = lines[i] ?? '';
+    const trimmed = rawLine.trim();
+    const match = trimmed.match(/^(TITLE|DESCRIPTION|TAGS|CHAPTERS):\s*(.*)$/i);
+    if (!match) continue;
+
+    const key = match[1]!.toUpperCase() as HeaderKey;
+    if (headerIndices[key] !== -1) continue; // first match wins
+
+    headerIndices[key] = i;
+    const inline = (match[2] ?? '').trim();
+    if (inline) {
+      inlineFirstLine[key] = inline;
+    }
+  }
+
+  const sections: TitleDescriptionSections = {
+    title: '',
+    description: '',
+    youtubeTags: '',
+    chapters: '',
+  };
+
+  const foundHeaders = headerOrder
+    .map((key) => ({ key, index: headerIndices[key] }))
+    .filter((entry) => entry.index >= 0)
+    .sort((a, b) => a.index - b.index);
+
+  if (foundHeaders.length === 0) {
+    // Backwards-compatible fallback: old format was "title on first line, description after".
+    const [firstLine = '', ...rest] = normalized.split('\n');
+    sections.title = firstLine.trim();
+    sections.description = rest.join('\n').trim();
+  } else {
+    for (let i = 0; i < foundHeaders.length; i += 1) {
+      const current = foundHeaders[i]!;
+      const next = foundHeaders[i + 1];
+      const start = current.index + 1;
+      const end = next ? next.index : lines.length;
+
+      const bodyLines = lines.slice(start, end);
+      const headerInline = inlineFirstLine[current.key];
+      const body =
+        (headerInline ? [headerInline, ...bodyLines] : bodyLines).join('\n').trim();
+
+      if (current.key === 'TITLE') sections.title = body;
+      if (current.key === 'DESCRIPTION') sections.description = body;
+      if (current.key === 'TAGS') sections.youtubeTags = body;
+      if (current.key === 'CHAPTERS') sections.chapters = body;
+    }
+  }
+
+  sections.title = sections.title.trim();
+  sections.description = sections.description.trim();
+  sections.youtubeTags = coerceYoutubeTagsMaxChars(
+    sections.youtubeTags
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+    500,
+  );
+  sections.chapters = sections.chapters
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .join('\n')
+    .trim();
+
+  return sections;
+}
+
 function getTagForLine(line: string): string {
   const trimmed = line.trim().toLowerCase();
   if (!trimmed) return '[warmly]';
@@ -127,6 +237,53 @@ function getTagForLine(line: string): string {
 
   // Default to warm, engaging delivery
   return '[warmly]';
+}
+
+function coerceSingleNarrationAudioTagPerLine(responseText: string): string {
+  const lines = splitLinesForStrictComparison(responseText);
+  const tagRegex = /\[[^\[\]]+\]/g;
+  let linesWithMultipleTags = 0;
+  let changed = false;
+  let firstExample: { lineIndex: number; tags: string[]; preview: string } | null = null;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? '';
+    const matches = Array.from(line.matchAll(tagRegex));
+    if (matches.length <= 1) continue;
+
+    linesWithMultipleTags += 1;
+    changed = true;
+    if (!firstExample) {
+      firstExample = {
+        lineIndex: i + 1,
+        tags: matches.map((m) => m[0]).slice(0, 10),
+        preview: line.slice(0, 260),
+      };
+    }
+
+    // Remove all tags after the first one, preserving all spoken words.
+    // Remove from the end so indices stay valid.
+    let next = line;
+    for (let k = matches.length - 1; k >= 1; k -= 1) {
+      const m = matches[k];
+      const start = m?.index ?? -1;
+      const text = m?.[0] ?? '';
+      if (start >= 0 && text) {
+        next = next.slice(0, start) + next.slice(start + text.length);
+      }
+    }
+
+    // Collapse accidental double spaces created by tag removal.
+    lines[i] = next.replace(/\s{2,}/g, ' ').trimEnd();
+  }
+
+  if (changed) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'post-fix',hypothesisId:'F',location:'src/app/api/agent/run-step/route.ts:coerceSingleNarrationAudioTagPerLine',message:'Coerced multiple tags per line down to one',data:{linesTotal:lines.length,linesWithMultipleTags,example:firstExample},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+  }
+
+  return lines.join('\n');
 }
 
 function ensureMinimumNarrationAudioTags({
@@ -203,7 +360,14 @@ function validateNarrationAudioTagsResponse({
   const inputLines = splitLinesForStrictComparison(inputNarrationScript);
   const outputLines = splitLinesForStrictComparison(responseText);
 
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:entry',message:'Validate narration audio tags response',data:{inputLineCount:inputLines.length,outputLineCount:outputLines.length,inputChars:inputNarrationScript.length,outputChars:responseText.length},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion agent log
+
   if (outputLines.length !== inputLines.length) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:linecount-mismatch',message:'Line count mismatch in audio tag output',data:{inputLineCount:inputLines.length,outputLineCount:outputLines.length,outputFirst3:outputLines.slice(0,3),outputLast3:outputLines.slice(Math.max(0,outputLines.length-3))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
     return {
       ok: false,
       error:
@@ -219,12 +383,23 @@ function validateNarrationAudioTagsResponse({
 
   for (let i = 0; i < outputLines.length; i += 1) {
     const line = outputLines[i] ?? '';
+    const inputLine = inputLines[i] ?? '';
     if (line.trim().length > 0) {
       nonEmptyLineCount += 1;
     }
     const matches = Array.from(line.matchAll(tagRegex));
+    const inputMatches = Array.from(inputLine.matchAll(tagRegex));
+
+    if (i === 2) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:line3',message:'Line 3 tag inspection (1-indexed)',data:{lineIndex:i+1,outputLinePreview:line.slice(0,220),outputTagCount:matches.length,outputTags:matches.map(m=>m[0]).slice(0,5),inputLinePreview:inputLine.slice(0,220),inputTagCount:inputMatches.length,inputTags:inputMatches.map(m=>m[0]).slice(0,5)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
+    }
 
     if (matches.length > 1) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:multiple-tags',message:'Multiple tags detected on a single line',data:{lineIndex:i+1,outputLinePreview:line.slice(0,260),outputTagCount:matches.length,outputTags:matches.map(m=>m[0]).slice(0,10),inputLinePreview:inputLine.slice(0,260),inputTagCount:inputMatches.length,inputTags:inputMatches.map(m=>m[0]).slice(0,10)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
       return {
         ok: false,
         error:
@@ -238,6 +413,9 @@ function validateNarrationAudioTagsResponse({
       const raw = (matches[0]?.[0] ?? '').slice(1, -1); // content inside brackets, no trimming
 
       if (raw.trim() !== raw) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:tag-has-whitespace',message:'Tag token has leading/trailing whitespace',data:{lineIndex:i+1,rawTag:raw,tagLiteral:matches[0]?.[0] ?? '',outputLinePreview:line.slice(0,220)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
         return {
           ok: false,
           error:
@@ -247,6 +425,9 @@ function validateNarrationAudioTagsResponse({
       }
 
       if (!tagWordRegex.test(raw)) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:tag-invalid-token',message:'Tag token fails word regex',data:{lineIndex:i+1,rawTag:raw,tagLiteral:matches[0]?.[0] ?? '',outputLinePreview:line.slice(0,220)},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
         return {
           ok: false,
           error:
@@ -262,6 +443,9 @@ function validateNarrationAudioTagsResponse({
   // We enforce a low, proportional minimum to avoid impossible thresholds on short scripts.
   const minTags = Math.max(1, Math.floor(nonEmptyLineCount * 0.25));
   if (tagCount < minTags) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:too-few-tags',message:'Too few tags vs minTags threshold',data:{nonEmptyLineCount,tagCount,minTags},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
     return {
       ok: false,
       error:
@@ -270,6 +454,9 @@ function validateNarrationAudioTagsResponse({
     };
   }
 
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'I',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:ok',message:'Audio tag validation passed',data:{nonEmptyLineCount,tagCount},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion agent log
   return { ok: true };
 }
 
@@ -380,8 +567,8 @@ export async function POST(request: Request) {
 
     const step = getStepConfigForAudience(stepId, audienceMode);
 
-    // Use step's defaultModel if available, otherwise use the provided model
-    const effectiveModel = step.defaultModel ?? model;
+    // Use the user-selected model (step.defaultModel is only a UI default).
+    const effectiveModel = model;
 
     // Enhanced logging for steps that need high token limits
     const isProductionScript = stepId === 'productionScript';
@@ -427,6 +614,19 @@ export async function POST(request: Request) {
       promptTemplateOverride,
     });
 
+    if (stepId === 'thumbnail') {
+      // #region agent log
+      {
+        const overlayMatch =
+          typeof responseText === 'string'
+            ? responseText.match(/Text Overlay:\s*"([^"]+)"/i)
+            : null;
+        const extractedOverlay = overlayMatch?.[1] ?? null;
+        fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run2',hypothesisId:'E',location:'src/app/api/agent/run-step/route.ts:thumbnail',message:'Server produced thumbnail creative brief',data:{audienceMode,model:effectiveModel,topicPreview:topic.slice(0,120),promptTemplateOverride:typeof promptTemplateOverride==='string',resolvedPromptChars:resolvedPrompt?.length ?? null,responseTextChars:typeof responseText==='string'?responseText.length:null,extractedOverlay,responsePreview:typeof responseText==='string'?responseText.slice(0,240):null},timestamp:Date.now()})}).catch(()=>{});
+      }
+      // #endregion agent log
+    }
+
     let finalResponseText = responseText;
 
     if (needsHighTokenLimit) {
@@ -447,11 +647,15 @@ export async function POST(request: Request) {
         );
       }
 
+      // The model sometimes violates the "one tag per line" rule (especially on long lines).
+      // Make this step robust by coercing each line down to a single tag.
+      finalResponseText = coerceSingleNarrationAudioTagPerLine(finalResponseText);
+
       // If the model returns too few tags, auto-insert a minimum set of safe tags
       // without changing any words or line structure.
       finalResponseText = ensureMinimumNarrationAudioTags({
         inputNarrationScript,
-        responseText,
+        responseText: finalResponseText,
       });
 
       const validation = validateNarrationAudioTagsResponse({
@@ -467,12 +671,12 @@ export async function POST(request: Request) {
     let producedVariables = { ...baseProducedVariables };
 
     if (stepId === 'titleDescription') {
-      const [firstLine = '', ...rest] = responseText.split('\n');
-      const title = firstLine.trim();
-      const description = rest.join('\n').trim();
+      const { title, description, youtubeTags, chapters } = parseTitleDescriptionResponse(finalResponseText);
       producedVariables = {
         Title: title,
         Description: description,
+        YoutubeTags: youtubeTags,
+        Chapters: chapters,
       };
     } else if (stepId === 'scriptQA') {
       const hardCap = coercePositiveInt(variables.DefaultWordCount) ?? 1600;
