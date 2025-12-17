@@ -125,10 +125,11 @@ export function useAutoSave({
 
         const mergedCharacterReferenceImage = prev.characterReferenceImage || data.characterReferenceImage;
 
-        const preferNonEmpty = (serverValue: unknown, prevValue: unknown) => {
+        const preferNonEmpty = (prevValue: unknown, serverValue: unknown) => {
+          const prevStr = typeof prevValue === "string" ? prevValue : undefined;
+          if (prevStr && prevStr.trim().length > 0) return prevStr;
           const serverStr = typeof serverValue === "string" ? serverValue : undefined;
           if (serverStr && serverStr.trim().length > 0) return serverStr;
-          const prevStr = typeof prevValue === "string" ? prevValue : undefined;
           return prevStr;
         };
 
@@ -136,14 +137,16 @@ export function useAutoSave({
           ...prev,
           ...data,
           // Important: prevent auto-save from wiping local outputs when the ref snapshot lags.
-          keyConcepts: preferNonEmpty(data.keyConcepts, prev.keyConcepts),
-          hookScript: preferNonEmpty(data.hookScript, prev.hookScript),
-          quizInfo: preferNonEmpty(data.quizInfo, prev.quizInfo),
-          videoScript: preferNonEmpty(data.videoScript, prev.videoScript),
-          narrationScript: preferNonEmpty(data.narrationScript, prev.narrationScript),
-          title: preferNonEmpty(data.title, prev.title),
-          description: preferNonEmpty(data.description, prev.description),
-          thumbnailPrompt: preferNonEmpty(data.thumbnailPrompt, prev.thumbnailPrompt),
+          keyConcepts: preferNonEmpty(prev.keyConcepts, data.keyConcepts),
+          hookScript: preferNonEmpty(prev.hookScript, data.hookScript),
+          quizInfo: preferNonEmpty(prev.quizInfo, data.quizInfo),
+          videoScript: preferNonEmpty(prev.videoScript, data.videoScript),
+          narrationScript: preferNonEmpty(prev.narrationScript, data.narrationScript),
+          title: preferNonEmpty(prev.title, data.title),
+          description: preferNonEmpty(prev.description, data.description),
+          youtubeTags: preferNonEmpty(prev.youtubeTags, data.youtubeTags),
+          chapters: preferNonEmpty(prev.chapters, data.chapters),
+          thumbnailPrompt: preferNonEmpty(prev.thumbnailPrompt, data.thumbnailPrompt),
           steps: mergedSteps,
           sceneAssets: mergedSceneAssets,
           characterReferenceImage: mergedCharacterReferenceImage,
@@ -151,6 +154,10 @@ export function useAutoSave({
             data.narrationModelId ?? prev.narrationModelId,
           ),
         });
+
+        // Keep the ref in sync immediately so subsequent auto-saves and
+        // client-side steps (like thumbnail generation) don't read stale state.
+        pipelineRef.current = merged;
 
         return merged;
       });

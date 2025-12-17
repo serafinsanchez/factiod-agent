@@ -30,6 +30,8 @@ export function buildGeminiImagePrompt({
     : null;
   const extractedOverlay = overlayMatch?.[1] ?? null;
   const negativeLine = negativeLineMatch?.[1] ?? null;
+  const overlayText = typeof extractedOverlay === "string" ? extractedOverlay.trim() : "";
+  const hasOverlayText = overlayText.length > 0;
 
   // #region agent log
   fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'A',location:'src/prompts/everyone/gemini-image.prompt.ts:33',message:'Extracted overlay + negative checks',data:{extractedOverlay,negativeHasText:typeof negativeLine==='string'?/\btext\b/i.test(negativeLine):null,negativeHasCaptions:typeof negativeLine==='string'?/\bcaptions?\b/i.test(negativeLine):null,negativeHasWords:typeof negativeLine==='string'?/\bwords?\b/i.test(negativeLine):null},timestamp:Date.now()})}).catch(()=>{});
@@ -56,28 +58,32 @@ export function buildGeminiImagePrompt({
         "- Lighting & mood: bright, high-key rim light with soft diffusion; no harsh shadows.",
       ];
 
-  // Only add text overlay instruction for thumbnails, not scene images
+  // Only add text overlay instruction for thumbnails, not scene images.
+  // Insert early (before the general Requirements block) so it carries maximum weight.
   if (!skipTextOverlay) {
-    // Use EITHER the exact overlay OR the generic instruction - never both
-    if (typeof extractedOverlay === "string" && extractedOverlay.trim().length > 0) {
-      promptLines.push(
-        `- Text overlay: render the EXACT text "${extractedOverlay.trim()}" verbatim in the upper-left, bold sans-serif, thick outline, high contrast.`
-      );
-    } else {
-      promptLines.push(
-        "- Text overlay: add a bold, 3-4 word caption derived from the brief in the upper-left, high-contrast, legible."
-      );
-    }
+    const overlayLines = hasOverlayText
+      ? [
+          `OVERLAY_TEXT="${overlayText}"`,
+          "CRITICAL: Render ONLY the exact OVERLAY_TEXT above in the image, verbatim (same spelling, capitalization, and spacing).",
+          "CRITICAL: Do NOT paraphrase, shorten, translate, substitute, or \"improve\" OVERLAY_TEXT.",
+          "CRITICAL: If you cannot render OVERLAY_TEXT exactly, render NO text at all (better than wrong text).",
+          "- Text overlay placement & style: upper-left, bold sans-serif, thick outline, high contrast; keep fully readable; do not cover faces.",
+          "- Text rule: The overlay is the ONLY allowed text; do not add any other words, labels, watermarks, logos, or UI text.",
+        ]
+      : [
+          "CRITICAL: Add a bold, 3-4 word caption derived from the brief in the upper-left, high-contrast, legible.",
+          "- Text rule: The overlay is the ONLY allowed text; do not add any other words, labels, watermarks, logos, or UI text.",
+        ];
 
     // If the creative brief's negative list contains "text/captions", clarify it's about EXTRA text only.
-    if (
-      typeof negativeLine === "string" &&
-      /\b(text|captions?|labels?|words?)\b/i.test(negativeLine)
-    ) {
-      promptLines.push(
+    if (typeof negativeLine === "string" && /\b(text|captions?|labels?|words?)\b/i.test(negativeLine)) {
+      overlayLines.push(
         "- IMPORTANT: Any 'no text/captions/labels/words' constraints apply only to EXTRA/accidental text; the overlay text is required."
       );
     }
+
+    // For thumbnails, index 2 is just before "Requirements:" in the base prompt array.
+    promptLines.splice(2, 0, ...overlayLines);
   }
 
   // #region agent log
@@ -89,7 +95,9 @@ export function buildGeminiImagePrompt({
     skipTextOverlay
       ? "- Safety & negatives: family-friendly, no gore, no weapons, no logos, no creepy vibes, absolutely NO text, captions, labels, or words anywhere in the image."
       : "- Safety & negatives: family-friendly, no gore, no weapons, no extra logos, no creepy vibes, no additional text beyond the overlay.",
-    "- Create a unique composition different from previous generations.",
+    !skipTextOverlay && hasOverlayText
+      ? "- Variation: You may vary camera angle, composition, props, and lighting between renders, but NEVER change OVERLAY_TEXT."
+      : "- Variation: Create a unique composition different from previous generations.",
     "Creative brief:",
     `\"\"\"${creativeBrief}\"\"\"`
   );

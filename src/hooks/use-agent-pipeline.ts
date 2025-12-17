@@ -936,210 +936,232 @@ export function useAgentPipeline() {
 
         const producedVariables: Record<string, string> = data.producedVariables ?? {};
 
-        setPipeline((prev) => {
-          const prevVideoScript =
-            typeof prev.videoScript === "string" ? prev.videoScript : "";
-          const prevNarrationScript =
-            typeof prev.narrationScript === "string" ? prev.narrationScript : "";
-          const prevDerivedNarration = prevVideoScript
-            ? toNarrationOnly(prevVideoScript)
+        // IMPORTANT: Update pipelineRef.current BEFORE queueAutoSave() runs.
+        // queueAutoSave reads pipelineRef.current; if we only update it inside a
+        // React state updater, React may batch/defer execution and we can race.
+        const basePipeline = pipelineRef.current;
+
+        const prevVideoScript =
+          typeof basePipeline.videoScript === "string" ? basePipeline.videoScript : "";
+        const prevNarrationScript =
+          typeof basePipeline.narrationScript === "string"
+            ? basePipeline.narrationScript
             : "";
-          const shouldAutoUpdateNarrationScript =
-            prevNarrationScript.trim().length === 0 ||
-            (prevVideoScript.trim().length > 0 &&
-              prevNarrationScript.trim() === prevDerivedNarration.trim());
+        const prevDerivedNarration = prevVideoScript
+          ? toNarrationOnly(prevVideoScript)
+          : "";
+        const shouldAutoUpdateNarrationScript =
+          prevNarrationScript.trim().length === 0 ||
+          (prevVideoScript.trim().length > 0 &&
+            prevNarrationScript.trim() === prevDerivedNarration.trim());
 
-          const updatedSteps = {
-            ...prev.steps,
-            [stepId]: {
-              ...prev.steps[stepId],
-              resolvedPrompt: data.resolvedPrompt ?? "",
-              responseText: data.responseText ?? "",
-              status: "success" as const,
-              metrics: data.metrics,
-              errorMessage: undefined,
-            },
-          };
+        const updatedSteps = {
+          ...basePipeline.steps,
+          [stepId]: {
+            ...basePipeline.steps[stepId],
+            resolvedPrompt: data.resolvedPrompt ?? "",
+            responseText: data.responseText ?? "",
+            status: "success" as const,
+            metrics: data.metrics,
+            errorMessage: undefined,
+          },
+        };
 
-          const nextPipeline: PipelineState = {
-            ...prev,
-            steps: updatedSteps,
-          };
+        const nextPipeline: PipelineState = {
+          ...basePipeline,
+          steps: updatedSteps,
+        };
 
-          // Process produced variables
-          for (const [key, value] of Object.entries(producedVariables)) {
-            if (key === "ProductionScript") {
-              try {
-                let jsonStr = value.trim();
-                const closedMatch = value.match(/```json\s*([\s\S]*?)\s*```/);
-                if (closedMatch) {
-                  jsonStr = closedMatch[1];
-                } else {
-                  const openMatch = value.match(/```json\s*([\s\S]*)$/);
-                  if (openMatch) {
-                    jsonStr = openMatch[1].trim();
-                    if (jsonStr.startsWith('{') && !jsonStr.endsWith('}')) {
-                      const lastBrace = jsonStr.lastIndexOf('}');
-                      if (lastBrace > 0) {
-                        const scenesArrayMatch = jsonStr.match(/"scenes"\s*:\s*\[/);
-                        if (scenesArrayMatch) {
-                          jsonStr = jsonStr.slice(0, lastBrace + 1) + ']}';
-                        }
+        // Process produced variables
+        for (const [key, value] of Object.entries(producedVariables)) {
+          if (key === "ProductionScript") {
+            try {
+              let jsonStr = value.trim();
+              const closedMatch = value.match(/```json\s*([\s\S]*?)\s*```/);
+              if (closedMatch) {
+                jsonStr = closedMatch[1];
+              } else {
+                const openMatch = value.match(/```json\s*([\s\S]*)$/);
+                if (openMatch) {
+                  jsonStr = openMatch[1].trim();
+                  if (jsonStr.startsWith("{") && !jsonStr.endsWith("}")) {
+                    const lastBrace = jsonStr.lastIndexOf("}");
+                    if (lastBrace > 0) {
+                      const scenesArrayMatch = jsonStr.match(/"scenes"\s*:\s*\[/);
+                      if (scenesArrayMatch) {
+                        jsonStr = jsonStr.slice(0, lastBrace + 1) + "]}";
                       }
                     }
                   }
                 }
-                let parsed = JSON.parse(jsonStr) as ProductionScriptData;
-                
-                if (parsed.scenes && Array.isArray(parsed.scenes)) {
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  parsed.scenes = parsed.scenes.map((scene: any) => ({
-                    sceneNumber: scene.sceneNumber ?? scene.id ?? scene.number ?? 0,
-                    narrationText: scene.narrationText ?? scene.narration ?? scene.text ?? "",
-                    visualDescription: scene.visualDescription ?? scene.visual ?? scene.description ?? "",
-                    estimatedDurationSec: scene.estimatedDurationSec ?? 
-                                         (scene.endSec && scene.startSec ? (scene.endSec as number) - (scene.startSec as number) : 8),
-                    startSec: typeof scene.startSec === "number" ? scene.startSec : undefined,
-                    endSec: typeof scene.endSec === "number" ? scene.endSec : undefined,
-                  })) as ProductionScriptData["scenes"];
-                }
+              }
+              let parsed = JSON.parse(jsonStr) as ProductionScriptData;
 
-                const narrationTimestamps = prev.narrationTimestamps;
-                if (narrationTimestamps) {
-                  try {
-                    const { alignedScript } = alignScenesToTimestamps(parsed, narrationTimestamps);
-                    parsed = alignedScript;
-                  } catch {
-                    // ignore alignment errors
-                  }
-                }
+              if (parsed.scenes && Array.isArray(parsed.scenes)) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                parsed.scenes = parsed.scenes.map((scene: any) => ({
+                  sceneNumber: scene.sceneNumber ?? scene.id ?? scene.number ?? 0,
+                  narrationText:
+                    scene.narrationText ?? scene.narration ?? scene.text ?? "",
+                  visualDescription:
+                    scene.visualDescription ??
+                    scene.visual ??
+                    scene.description ??
+                    "",
+                  estimatedDurationSec:
+                    scene.estimatedDurationSec ??
+                    (scene.endSec && scene.startSec
+                      ? (scene.endSec as number) - (scene.startSec as number)
+                      : 8),
+                  startSec:
+                    typeof scene.startSec === "number"
+                      ? scene.startSec
+                      : undefined,
+                  endSec:
+                    typeof scene.endSec === "number" ? scene.endSec : undefined,
+                })) as ProductionScriptData["scenes"];
+              }
 
-                nextPipeline.productionScript = parsed;
-                nextPipeline.sceneAssets = parsed.scenes?.map((scene) => ({
+              const narrationTimestamps = nextPipeline.narrationTimestamps;
+              if (narrationTimestamps) {
+                try {
+                  const { alignedScript } = alignScenesToTimestamps(
+                    parsed,
+                    narrationTimestamps,
+                  );
+                  parsed = alignedScript;
+                } catch {
+                  // ignore alignment errors
+                }
+              }
+
+              nextPipeline.productionScript = parsed;
+              nextPipeline.sceneAssets =
+                parsed.scenes?.map((scene) => ({
                   sceneNumber: scene.sceneNumber,
                   imagePrompt: "",
                   videoPrompt: "",
                   status: "pending",
                 })) ?? [];
-              } catch (parseError) {
-                console.error("Failed to parse ProductionScript:", parseError);
-              }
-            } else if (key === "SceneImagePrompts") {
-              try {
-                let jsonStr = value.trim();
-                const closedMatch = value.match(/```json\s*([\s\S]*?)\s*```/);
-                if (closedMatch) jsonStr = closedMatch[1];
-                
-                const parsed = JSON.parse(jsonStr) as Array<{
-                  sceneNumber: number;
-                  firstFramePrompt?: string;
-                  lastFramePrompt?: string;
-                  imagePrompt?: string;
-                  prompt?: string;
-                }>;
+            } catch (parseError) {
+              console.error("Failed to parse ProductionScript:", parseError);
+            }
+          } else if (key === "SceneImagePrompts") {
+            try {
+              let jsonStr = value.trim();
+              const closedMatch = value.match(/```json\s*([\s\S]*?)\s*```/);
+              if (closedMatch) jsonStr = closedMatch[1];
 
-                const existingAssets = nextPipeline.sceneAssets || [];
-                const getFirstFramePrompt = (item: typeof parsed[0]) => {
-                  return item.firstFramePrompt || item.imagePrompt || item.prompt || "";
-                };
-                const getLastFramePrompt = (item: typeof parsed[0]) => {
-                  return item.lastFramePrompt || "";
-                };
+              const parsed = JSON.parse(jsonStr) as Array<{
+                sceneNumber: number;
+                firstFramePrompt?: string;
+                lastFramePrompt?: string;
+                imagePrompt?: string;
+                prompt?: string;
+              }>;
 
-                nextPipeline.sceneAssets = existingAssets.map((asset) => {
-                  const promptData = parsed.find((p) => p.sceneNumber === asset.sceneNumber);
-                  if (promptData) {
-                    return {
-                      ...asset,
-                      imagePrompt: getFirstFramePrompt(promptData),
-                      lastFrameImagePrompt: getLastFramePrompt(promptData),
-                      status: "pending" as const,
-                    };
-                  }
-                  return asset;
-                });
-              } catch (parseError) {
-                console.error("Failed to parse SceneImagePrompts:", parseError);
-              }
-            } else if (key === "SceneVideoPrompts") {
-              try {
-                let jsonStr = value.trim();
-                const closedMatch = value.match(/```json\s*([\s\S]*?)\s*```/);
-                if (closedMatch) jsonStr = closedMatch[1];
-                
-                const parsed = JSON.parse(jsonStr) as Array<{
-                  sceneNumber: number;
-                  videoPrompt?: string;
-                  motion?: string;
-                }>;
-
-                const existingAssets = nextPipeline.sceneAssets || [];
-                const getVideoPrompt = (item: typeof parsed[0]) => {
-                  return item.videoPrompt || item.motion || "";
-                };
-
-                nextPipeline.sceneAssets = existingAssets.map((asset) => {
-                  const promptData = parsed.find((p) => p.sceneNumber === asset.sceneNumber);
-                  if (promptData) {
-                    return {
-                      ...asset,
-                      videoPrompt: getVideoPrompt(promptData),
-                    };
-                  }
-                  return asset;
-                });
-              } catch (parseError) {
-                console.error("Failed to parse SceneVideoPrompts:", parseError);
-              }
-            } else {
-              // Handle simple string variables
-              const fieldMap: Record<string, keyof PipelineState> = {
-                KeyConcepts: "keyConcepts",
-                HookScript: "hookScript",
-                QuizInfo: "quizInfo",
-                VideoScript: "videoScript",
-                NarrationScript: "narrationScript",
-                Title: "title",
-                Description: "description",
-                YoutubeTags: "youtubeTags",
-                Chapters: "chapters",
-                ThumbnailPrompt: "thumbnailPrompt",
+              const existingAssets = nextPipeline.sceneAssets || [];
+              const getFirstFramePrompt = (item: (typeof parsed)[0]) => {
+                return item.firstFramePrompt || item.imagePrompt || item.prompt || "";
               };
-              const field = fieldMap[key];
-              if (field) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (nextPipeline as any)[field] = value;
-              }
+              const getLastFramePrompt = (item: (typeof parsed)[0]) => {
+                return item.lastFramePrompt || "";
+              };
 
-              if (
-                key === "VideoScript" &&
-                typeof value === "string" &&
-                shouldAutoUpdateNarrationScript
-              ) {
-                nextPipeline.narrationScript = toNarrationOnly(value);
-              }
+              nextPipeline.sceneAssets = existingAssets.map((asset) => {
+                const promptData = parsed.find(
+                  (p) => p.sceneNumber === asset.sceneNumber,
+                );
+                if (promptData) {
+                  return {
+                    ...asset,
+                    imagePrompt: getFirstFramePrompt(promptData),
+                    lastFrameImagePrompt: getLastFramePrompt(promptData),
+                    status: "pending" as const,
+                  };
+                }
+                return asset;
+              });
+            } catch (parseError) {
+              console.error("Failed to parse SceneImagePrompts:", parseError);
+            }
+          } else if (key === "SceneVideoPrompts") {
+            try {
+              let jsonStr = value.trim();
+              const closedMatch = value.match(/```json\s*([\s\S]*?)\s*```/);
+              if (closedMatch) jsonStr = closedMatch[1];
+
+              const parsed = JSON.parse(jsonStr) as Array<{
+                sceneNumber: number;
+                videoPrompt?: string;
+                motion?: string;
+              }>;
+
+              const existingAssets = nextPipeline.sceneAssets || [];
+              const getVideoPrompt = (item: (typeof parsed)[0]) => {
+                return item.videoPrompt || item.motion || "";
+              };
+
+              nextPipeline.sceneAssets = existingAssets.map((asset) => {
+                const promptData = parsed.find(
+                  (p) => p.sceneNumber === asset.sceneNumber,
+                );
+                if (promptData) {
+                  return {
+                    ...asset,
+                    videoPrompt: getVideoPrompt(promptData),
+                  };
+                }
+                return asset;
+              });
+            } catch (parseError) {
+              console.error("Failed to parse SceneVideoPrompts:", parseError);
+            }
+          } else {
+            // Handle simple string variables
+            const fieldMap: Record<string, keyof PipelineState> = {
+              KeyConcepts: "keyConcepts",
+              HookScript: "hookScript",
+              QuizInfo: "quizInfo",
+              VideoScript: "videoScript",
+              NarrationScript: "narrationScript",
+              Title: "title",
+              Description: "description",
+              YoutubeTags: "youtubeTags",
+              Chapters: "chapters",
+              ThumbnailPrompt: "thumbnailPrompt",
+            };
+            const field = fieldMap[key];
+            if (field) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (nextPipeline as any)[field] = value;
+            }
+
+            if (
+              key === "VideoScript" &&
+              typeof value === "string" &&
+              shouldAutoUpdateNarrationScript
+            ) {
+              nextPipeline.narrationScript = toNarrationOnly(value);
             }
           }
+        }
 
-          const totals = calculateStepTotals(updatedSteps);
-          const sessionTotals = getAccumulatedSessionTotals(prev, data.metrics);
-          
-          const result: PipelineState = {
-            ...nextPipeline,
-            totalTokens: totals.totalTokens,
-            totalCostUsd: totals.totalCostUsd,
-            sessionTotalTokens: sessionTotals.sessionTotalTokens,
-            sessionTotalCostUsd: sessionTotals.sessionTotalCostUsd,
-            cumulativeTokens: sessionTotals.cumulativeTokens,
-            cumulativeCostUsd: sessionTotals.cumulativeCostUsd,
-          };
+        const totals = calculateStepTotals(updatedSteps);
+        const sessionTotals = getAccumulatedSessionTotals(basePipeline, data.metrics);
 
-          // Keep the ref in sync immediately so auto-save doesn't read stale state.
-          pipelineRef.current = result;
+        const result: PipelineState = {
+          ...nextPipeline,
+          totalTokens: totals.totalTokens,
+          totalCostUsd: totals.totalCostUsd,
+          sessionTotalTokens: sessionTotals.sessionTotalTokens,
+          sessionTotalCostUsd: sessionTotals.sessionTotalCostUsd,
+          cumulativeTokens: sessionTotals.cumulativeTokens,
+          cumulativeCostUsd: sessionTotals.cumulativeCostUsd,
+        };
 
-          return result;
-        });
-
+        pipelineRef.current = result;
+        setPipeline(result);
         autoSave.queueAutoSave();
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to run step.";
