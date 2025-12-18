@@ -242,24 +242,11 @@ function getTagForLine(line: string): string {
 function coerceSingleNarrationAudioTagPerLine(responseText: string): string {
   const lines = splitLinesForStrictComparison(responseText);
   const tagRegex = /\[[^\[\]]+\]/g;
-  let linesWithMultipleTags = 0;
-  let changed = false;
-  let firstExample: { lineIndex: number; tags: string[]; preview: string } | null = null;
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i] ?? '';
     const matches = Array.from(line.matchAll(tagRegex));
     if (matches.length <= 1) continue;
-
-    linesWithMultipleTags += 1;
-    changed = true;
-    if (!firstExample) {
-      firstExample = {
-        lineIndex: i + 1,
-        tags: matches.map((m) => m[0]).slice(0, 10),
-        preview: line.slice(0, 260),
-      };
-    }
 
     // Remove all tags after the first one, preserving all spoken words.
     // Remove from the end so indices stay valid.
@@ -275,12 +262,6 @@ function coerceSingleNarrationAudioTagPerLine(responseText: string): string {
 
     // Collapse accidental double spaces created by tag removal.
     lines[i] = next.replace(/\s{2,}/g, ' ').trimEnd();
-  }
-
-  if (changed) {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'post-fix',hypothesisId:'F',location:'src/app/api/agent/run-step/route.ts:coerceSingleNarrationAudioTagPerLine',message:'Coerced multiple tags per line down to one',data:{linesTotal:lines.length,linesWithMultipleTags,example:firstExample},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion agent log
   }
 
   return lines.join('\n');
@@ -360,14 +341,7 @@ function validateNarrationAudioTagsResponse({
   const inputLines = splitLinesForStrictComparison(inputNarrationScript);
   const outputLines = splitLinesForStrictComparison(responseText);
 
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:entry',message:'Validate narration audio tags response',data:{inputLineCount:inputLines.length,outputLineCount:outputLines.length,inputChars:inputNarrationScript.length,outputChars:responseText.length},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion agent log
-
   if (outputLines.length !== inputLines.length) {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'G',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:linecount-mismatch',message:'Line count mismatch in audio tag output',data:{inputLineCount:inputLines.length,outputLineCount:outputLines.length,outputFirst3:outputLines.slice(0,3),outputLast3:outputLines.slice(Math.max(0,outputLines.length-3))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion agent log
     return {
       ok: false,
       error:
@@ -390,16 +364,7 @@ function validateNarrationAudioTagsResponse({
     const matches = Array.from(line.matchAll(tagRegex));
     const inputMatches = Array.from(inputLine.matchAll(tagRegex));
 
-    if (i === 2) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:line3',message:'Line 3 tag inspection (1-indexed)',data:{lineIndex:i+1,outputLinePreview:line.slice(0,220),outputTagCount:matches.length,outputTags:matches.map(m=>m[0]).slice(0,5),inputLinePreview:inputLine.slice(0,220),inputTagCount:inputMatches.length,inputTags:inputMatches.map(m=>m[0]).slice(0,5)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion agent log
-    }
-
     if (matches.length > 1) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:multiple-tags',message:'Multiple tags detected on a single line',data:{lineIndex:i+1,outputLinePreview:line.slice(0,260),outputTagCount:matches.length,outputTags:matches.map(m=>m[0]).slice(0,10),inputLinePreview:inputLine.slice(0,260),inputTagCount:inputMatches.length,inputTags:inputMatches.map(m=>m[0]).slice(0,10)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion agent log
       return {
         ok: false,
         error:
@@ -413,9 +378,6 @@ function validateNarrationAudioTagsResponse({
       const raw = (matches[0]?.[0] ?? '').slice(1, -1); // content inside brackets, no trimming
 
       if (raw.trim() !== raw) {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'D',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:tag-has-whitespace',message:'Tag token has leading/trailing whitespace',data:{lineIndex:i+1,rawTag:raw,tagLiteral:matches[0]?.[0] ?? '',outputLinePreview:line.slice(0,220)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
         return {
           ok: false,
           error:
@@ -425,9 +387,6 @@ function validateNarrationAudioTagsResponse({
       }
 
       if (!tagWordRegex.test(raw)) {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'E',location:'src/app/api/agent/run-step/route.ts:validateNarrationAudioTagsResponse:tag-invalid-token',message:'Tag token fails word regex',data:{lineIndex:i+1,rawTag:raw,tagLiteral:matches[0]?.[0] ?? '',outputLinePreview:line.slice(0,220)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
         return {
           ok: false,
           error:

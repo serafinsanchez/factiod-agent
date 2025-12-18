@@ -20,6 +20,22 @@ type SeedreamResponse = {
   seed: number;
 };
 
+function stripNegativePromptsLine(input: string): {
+  output: string;
+  removed: boolean;
+} {
+  const lines = input.split(/\r?\n/);
+  let removed = false;
+  const kept = lines.filter((line) => {
+    if (/^\s*Negative Prompts:\s*/i.test(line)) {
+      removed = true;
+      return false;
+    }
+    return true;
+  });
+  return { output: kept.join("\n").trim(), removed };
+}
+
 export async function POST(request: Request) {
   try {
     const { prompt, projectSlug, thumbnailPath: providedThumbnailPath } =
@@ -38,17 +54,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "FAL_KEY is not set" }, { status: 500 });
     }
 
+    const seedreamPrompt = stripNegativePromptsLine(prompt).output;
+
     fal.config({ credentials: falKey });
 
-    const result = await fal.subscribe(SEEDREAM_MODEL_ID, {
-      input: {
-        prompt,
-        image_size: { width: 3840, height: 2160 },
-        num_images: 1,
-        max_images: 1,
-        enable_safety_checker: true,
-      },
-    });
+    const falInput = {
+      prompt: seedreamPrompt,
+      image_size: { width: 3840, height: 2160 },
+      num_images: 1,
+      max_images: 1,
+      enable_safety_checker: true,
+    };
+
+    const result = await fal.subscribe(SEEDREAM_MODEL_ID, { input: falInput });
 
     const raw = (result.data || result) as unknown as SeedreamResponse;
     const firstImageUrl = raw.images?.[0]?.url;
@@ -112,14 +130,23 @@ export async function POST(request: Request) {
       seed: typeof raw.seed === "number" ? raw.seed : null,
     });
   } catch (error) {
+    const err = error as unknown as { status?: unknown };
+
     console.error("SeeDream v4 image generation error:", error);
+
+    // Preserve upstream HTTP status codes when available (e.g. 422 validation).
+    const status =
+      typeof err?.status === "number" && Number.isFinite(err.status)
+        ? err.status
+        : 500;
+
     return NextResponse.json(
       {
         error:
           error instanceof Error ? error.message : "Failed to generate image",
         details: error,
       },
-      { status: 500 },
+      { status },
     );
   }
 }

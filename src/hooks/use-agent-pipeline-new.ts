@@ -804,9 +804,6 @@ export function useAgentPipeline() {
       }));
 
       try {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'post-fix',hypothesisId:'J',location:'src/hooks/use-agent-pipeline-new.ts:runStep:request',message:'Calling /api/agent/run-step',data:{stepId,model:pipeline.model,audienceMode:pipeline.audienceMode ?? "forKids",hasPromptOverride:typeof promptTemplateOverride==="string" && promptTemplateOverride.trim().length>0,variablesKeys:Object.keys(variables).slice(0,40)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
         const response = await fetch("/api/agent/run-step", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -820,25 +817,14 @@ export function useAgentPipeline() {
           }),
         });
 
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'post-fix',hypothesisId:'K',location:'src/hooks/use-agent-pipeline-new.ts:runStep:response-meta',message:'Received /api/agent/run-step response headers',data:{stepId,status:response.status,ok:response.ok},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
-
         const data = await response.json();
 
         if (!response.ok || data?.error) {
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'post-fix',hypothesisId:'L',location:'src/hooks/use-agent-pipeline-new.ts:runStep:error',message:'run-step returned error',data:{stepId,status:response.status,ok:response.ok,apiError:typeof data?.error==="string"?data.error:null},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion agent log
           throw new Error(
             (typeof data?.error === "string" && data.error) ||
             `Failed to run step (status ${response.status}).`
           );
         }
-
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'post-fix',hypothesisId:'M',location:'src/hooks/use-agent-pipeline-new.ts:runStep:success',message:'run-step succeeded',data:{stepId,responseTextChars:typeof data?.responseText==="string"?data.responseText.length:null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
 
         const producedVariables: Record<string, string> = data.producedVariables ?? {};
 

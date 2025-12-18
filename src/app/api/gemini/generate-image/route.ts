@@ -74,18 +74,6 @@ export async function POST(request: Request) {
       audienceMode, // Optional: 'forKids' | 'forEveryone' (affects thumbnail instructions)
     } = await request.json();
 
-    // #region agent log
-    {
-      const extractedOverlay = extractTextOverlayFromCreativeBrief(prompt);
-      const negativeLineMatch =
-        typeof prompt === "string"
-          ? prompt.match(/Negative Prompts:\s*(.+)\s*$/im)
-          : null;
-      const negativeLine = negativeLineMatch?.[1] ?? null;
-      fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'C',location:'src/app/api/gemini/generate-image/route.ts:29',message:'generate-image received request',data:{audienceMode:typeof audienceMode==='string'?audienceMode:null,skipTextOverlay:typeof skipTextOverlay==='boolean'?skipTextOverlay:null,styleId:typeof styleId==='string'?styleId:null,projectSlug:typeof projectSlug==='string'?projectSlug:null,promptLen:typeof prompt==='string'?prompt.length:null,extractedOverlay,negativeHasText:typeof negativeLine==='string'?/\btext\b/i.test(negativeLine):null,negativeHasCaptions:typeof negativeLine==='string'?/\bcaptions?\b/i.test(negativeLine):null},timestamp:Date.now()})}).catch(()=>{});
-    }
-    // #endregion
-
     if (!prompt || typeof prompt !== "string") {
       return Response.json({ error: "Prompt is required" }, { status: 400 });
     }
@@ -123,13 +111,6 @@ export async function POST(request: Request) {
       referenceImage,
       variationTag,
     });
-
-    // #region agent log
-    {
-      const extractedOverlay = extractTextOverlayFromCreativeBrief(prompt);
-      fetch('http://127.0.0.1:7243/ingest/9fb4bdb4-06c7-4894-bef1-76b41a5a87a9',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'B',location:'src/app/api/gemini/generate-image/route.ts:73',message:'generate-image built structured prompt',data:{structuredPromptLen:structuredPrompt.length,includesDerivedOverlayInstruction:structuredPrompt.includes('derived from the brief'),includesExactOverlay:typeof extractedOverlay==='string'&&extractedOverlay.length>0?structuredPrompt.toLowerCase().includes(extractedOverlay.toLowerCase()):null},timestamp:Date.now()})}).catch(()=>{});
-    }
-    // #endregion
 
     const promptContent = [
       {
