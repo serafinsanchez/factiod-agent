@@ -157,6 +157,7 @@ export async function POST(request: Request) {
       config: {
         imageConfig: {
           aspectRatio: "16:9",
+          imageSize: "4K",
         },
         responseModalities: ["image"],
       },
