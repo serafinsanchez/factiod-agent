@@ -80,6 +80,7 @@ export const DEFAULT_VIDEO_GEN_SETTINGS: VideoGenSettings = {
  * Default Publishing settings
  */
 export const DEFAULT_PUBLISHING_SETTINGS: PublishingSettings = {
+  thumbnailModel: "nano_banana_pro",
   promptTitleDescription: getPromptByStepId("titleDescription"),
   promptThumbnail: getPromptByStepId("thumbnail"),
   defaultPromoCopy: "",

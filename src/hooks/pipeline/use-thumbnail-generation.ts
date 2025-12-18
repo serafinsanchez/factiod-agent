@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import type { PipelineState, StepRunMetrics } from "@/types/agent";
 import { getOrCreateProjectSlug, buildProjectThumbnailPath, getPublicProjectFileUrl } from "@/lib/projects";
 import { slugifyTopic } from "@/lib/slug";
+import { useSettings } from "@/hooks/use-settings";
 import {
   type ThumbnailImage,
   type ThumbnailMetrics,
@@ -26,6 +27,8 @@ export function useThumbnailGeneration({
   setPipeline,
   queueAutoSave,
 }: UseThumbnailGenerationOptions) {
+  const publishingSettings = useSettings("publishing");
+
   const [isGeneratingThumbnail, setIsGeneratingThumbnail] = useState(false);
   const [thumbnailImage, setThumbnailImage] = useState<ThumbnailImage>(null);
   const [thumbnailGenerationTime, setThumbnailGenerationTime] = useState<number | null>(null);
@@ -96,7 +99,13 @@ export function useThumbnailGeneration({
     const startTime = performance.now();
 
     try {
-      const res = await fetch("/api/gemini/generate-image", {
+      const thumbnailModel = publishingSettings.data?.thumbnailModel ?? "nano_banana_pro";
+      const endpoint =
+        thumbnailModel === "seedream_v4"
+          ? "/api/fal/seedream/generate-image"
+          : "/api/gemini/generate-image";
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -214,7 +223,13 @@ export function useThumbnailGeneration({
     } finally {
       setIsGeneratingThumbnail(false);
     }
-  }, [pipeline, pipelineRef, setPipeline, queueAutoSave]);
+  }, [
+    pipeline,
+    pipelineRef,
+    publishingSettings.data?.thumbnailModel,
+    setPipeline,
+    queueAutoSave,
+  ]);
 
   const downloadThumbnail = useCallback(async () => {
     if (!thumbnailImage) {

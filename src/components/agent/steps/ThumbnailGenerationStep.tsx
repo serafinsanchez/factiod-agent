@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useSettings } from "@/hooks/use-settings";
 import type { UseAgentPipelineReturn } from "@/hooks/use-agent-pipeline";
 import type { StepComponentProps } from "../shared/step-types";
 
@@ -20,6 +21,14 @@ export function ThumbnailGenerationStep({
   state,
   actions,
 }: StepComponentProps) {
+  const publishingSettings = useSettings("publishing");
+  const thumbnailModel =
+    publishingSettings.data?.thumbnailModel ?? "nano_banana_pro";
+  const thumbnailModelLabel =
+    thumbnailModel === "seedream_v4"
+      ? "SeeDream v4 (FAL.ai)"
+      : "Nano Banana Pro (Gemini)";
+
   const inlineThumbnailSrc =
     state.thumbnailImage?.mimeType && state.thumbnailImage?.data
       ? `data:${state.thumbnailImage.mimeType};base64,${state.thumbnailImage.data}`
@@ -56,7 +65,7 @@ export function ThumbnailGenerationStep({
             {stepConfig.label}
           </p>
           <p className="text-sm text-zinc-400">
-            Render the latest thumbnail prompt with Gemini 3 Pro Image Preview.
+            Render the latest thumbnail prompt with {thumbnailModelLabel}.
           </p>
         </div>
         <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
@@ -117,7 +126,7 @@ export function ThumbnailGenerationStep({
             </Button>
           </div>
 
-          <ThumbnailMetricsPanel state={state} />
+          <ThumbnailMetricsPanel state={state} thumbnailModel={thumbnailModel} />
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-zinc-800/60 bg-zinc-950/40 p-4 text-sm text-zinc-400">
@@ -130,8 +139,10 @@ export function ThumbnailGenerationStep({
 
 function ThumbnailMetricsPanel({
   state,
+  thumbnailModel,
 }: {
   state: UseAgentPipelineReturn["state"];
+  thumbnailModel: "nano_banana_pro" | "seedream_v4";
 }) {
   type MetricTileDescriptor = {
     label: string;
@@ -144,6 +155,7 @@ function ThumbnailMetricsPanel({
       ? `${(state.thumbnailGenerationTime / 1000).toFixed(1)}s`
       : "—";
   const metrics = state.thumbnailMetrics;
+  const isSeedream = thumbnailModel === "seedream_v4";
   const hasActualMetrics =
     Boolean(metrics) &&
     (typeof metrics?.inputTokens === "number" ||
@@ -156,33 +168,42 @@ function ThumbnailMetricsPanel({
   const formatCost = (value?: number | null) =>
     typeof value === "number" ? `$${value.toFixed(4)}` : "—";
 
-  const metricTiles: MetricTileDescriptor[] = hasActualMetrics
+  const metricTiles: MetricTileDescriptor[] = isSeedream
     ? [
-        { label: "Input tokens", value: formatTokens(metrics?.inputTokens) },
-        { label: "Output tokens", value: formatTokens(metrics?.outputTokens) },
-        { label: "Total tokens", value: formatTokens(metrics?.totalTokens) },
-        { label: "Cost (USD)", value: formatCost(metrics?.costUsd), accent: true },
+        { label: "Provider", value: "FAL.ai" },
+        { label: "Model", value: "SeeDream v4" },
+        { label: "Tokens", value: "—" },
+        { label: "Cost (USD)", value: "—", accent: true },
       ]
-    : [
-        { label: "Input tokens", value: GEMINI_THUMBNAIL_TOKEN_RANGE_TEXT },
-        { label: "Output tokens", value: "Image data (n/a)" },
-        { label: "Total tokens", value: GEMINI_THUMBNAIL_TOKEN_RANGE_TEXT },
-        { label: "Est. cost (USD)", value: GEMINI_THUMBNAIL_COST_RANGE_TEXT, accent: true },
-      ];
+    : hasActualMetrics
+      ? [
+          { label: "Input tokens", value: formatTokens(metrics?.inputTokens) },
+          { label: "Output tokens", value: formatTokens(metrics?.outputTokens) },
+          { label: "Total tokens", value: formatTokens(metrics?.totalTokens) },
+          { label: "Cost (USD)", value: formatCost(metrics?.costUsd), accent: true },
+        ]
+      : [
+          { label: "Input tokens", value: GEMINI_THUMBNAIL_TOKEN_RANGE_TEXT },
+          { label: "Output tokens", value: "Image data (n/a)" },
+          { label: "Total tokens", value: GEMINI_THUMBNAIL_TOKEN_RANGE_TEXT },
+          { label: "Est. cost (USD)", value: GEMINI_THUMBNAIL_COST_RANGE_TEXT, accent: true },
+        ];
 
   const gridTiles: MetricTileDescriptor[] = [
     ...metricTiles,
     { label: "Duration", value: durationValue },
   ];
 
-  const noteText = hasActualMetrics
-    ? `Gemini bills image tokens at ${GEMINI_THUMBNAIL_PRICE_TEXT}. Values above reflect this run.`
-    : `Gemini bills image tokens at ${GEMINI_THUMBNAIL_PRICE_TEXT}. Showing the typical range until we can read billing metadata from the API.`;
+  const noteText = isSeedream
+    ? "SeeDream v4 is billed via FAL.ai. Token usage and per-run cost aren’t surfaced in this UI yet."
+    : hasActualMetrics
+      ? `Gemini bills image tokens at ${GEMINI_THUMBNAIL_PRICE_TEXT}. Values above reflect this run.`
+      : `Gemini bills image tokens at ${GEMINI_THUMBNAIL_PRICE_TEXT}. Showing the typical range until we can read billing metadata from the API.`;
 
   return (
     <div className="rounded-2xl border border-zinc-900/80 bg-zinc-950/50 p-4">
       <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-        Thumbnail run metrics (Gemini 3 Pro 1K-4K)
+        Thumbnail run metrics ({isSeedream ? "SeeDream v4" : "Nano Banana Pro"})
       </p>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {gridTiles.map((tile) => (

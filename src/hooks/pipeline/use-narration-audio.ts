@@ -15,12 +15,14 @@ type UseNarrationAudioOptions = {
   pipelineRef: React.MutableRefObject<PipelineState>;
   setPipeline: React.Dispatch<React.SetStateAction<PipelineState>>;
   queueAutoSave: () => void;
+  voiceId?: string;
 };
 
 export function useNarrationAudio({
   pipelineRef,
   setPipeline,
   queueAutoSave,
+  voiceId,
 }: UseNarrationAudioOptions) {
   const [isGeneratingScriptAudio, setIsGeneratingScriptAudio] = useState(false);
   const [scriptAudioUrl, setScriptAudioUrl] = useState<string | null>(null);
@@ -101,7 +103,12 @@ export function useNarrationAudio({
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ text: finalScript, projectSlug, modelId: narrationModelId }),
+          body: JSON.stringify({
+            text: finalScript,
+            projectSlug,
+            modelId: narrationModelId,
+            voiceId,
+          }),
         });
 
         if (!response.ok) {
@@ -181,7 +188,7 @@ export function useNarrationAudio({
         setIsGeneratingScriptAudio(false);
       }
     },
-    [pipelineRef, setPipeline, queueAutoSave],
+    [pipelineRef, setPipeline, queueAutoSave, voiceId],
   );
 
   return {

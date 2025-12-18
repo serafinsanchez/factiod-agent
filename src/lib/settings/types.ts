@@ -74,6 +74,7 @@ export interface VideoGenSettings {
  * Publishing Settings
  */
 export interface PublishingSettings {
+  thumbnailModel: "nano_banana_pro" | "seedream_v4";
   promptTitleDescription: string;
   promptThumbnail: string;
   defaultPromoCopy: string;

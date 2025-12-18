@@ -183,6 +183,7 @@ export function useAgentPipeline() {
     pipelineRef,
     setPipeline,
     queueAutoSave: autoSave.queueAutoSave,
+    voiceId: scriptAudioSettings.data?.audioVoice,
   });
 
   // Thumbnail generation

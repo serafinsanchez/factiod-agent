@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { SettingsForm } from "../SettingsForm";
 import { PromptAccordion } from "../PromptAccordion";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useSettings } from "@/hooks/use-settings";
@@ -81,6 +82,33 @@ export function PublishingSettings() {
           />
           <p className="text-xs text-zinc-500">
             This text will be appended to video descriptions if provided
+          </p>
+        </div>
+      </div>
+
+      {/* Thumbnail */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold text-white">Thumbnail</h3>
+
+        <div className="space-y-2">
+          <Label htmlFor="thumbnailModel">Thumbnail model</Label>
+          <Select
+            id="thumbnailModel"
+            value={settings.thumbnailModel}
+            onChange={(e) =>
+              updateField(
+                "thumbnailModel",
+                e.target.value as PublishingSettingsType["thumbnailModel"],
+              )
+            }
+            options={[
+              { value: "nano_banana_pro", label: "Nano Banana Pro (Gemini)" },
+              { value: "seedream_v4", label: "SeeDream v4 (FAL.ai)" },
+            ]}
+          />
+          <p className="text-xs text-zinc-500">
+            Nano Banana Pro requires <code className="text-zinc-300">GEMINI_API_KEY</code>; SeeDream v4 requires{" "}
+            <code className="text-zinc-300">FAL_KEY</code>.
           </p>
         </div>
       </div>

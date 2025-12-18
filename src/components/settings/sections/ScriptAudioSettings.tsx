@@ -111,12 +111,20 @@ export function ScriptAudioSettings() {
         
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="audioVoice">Audio Voice ID</Label>
-            <Input
+            <Label htmlFor="audioVoice">Audio Voice</Label>
+            <Select
               id="audioVoice"
               value={settings.audioVoice}
               onChange={(e) => updateField("audioVoice", e.target.value)}
-              placeholder="ElevenLabs voice ID"
+              options={[
+                { value: "dXtC3XhB9GtPusIpNtQx", label: "Pip the Penguin" },
+                { value: "aMSt68OGf4xUZAnLpTU8", label: "Juniper" },
+                ...(settings.audioVoice && 
+                   settings.audioVoice !== "dXtC3XhB9GtPusIpNtQx" && 
+                   settings.audioVoice !== "aMSt68OGf4xUZAnLpTU8"
+                  ? [{ value: settings.audioVoice, label: `Custom (${settings.audioVoice.slice(0, 8)}...)` }]
+                  : [])
+              ]}
             />
           </div>
 

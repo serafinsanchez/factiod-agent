@@ -3,6 +3,10 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getDefaultSettings } from "@/lib/settings/defaults";
 import type { ScriptAudioSettings } from "@/lib/settings/types";
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 /**
  * GET /api/settings/get?key=scriptAudio
  * Retrieves settings for a specific key
@@ -39,7 +43,7 @@ export async function GET(request: NextRequest) {
           const envVoiceId = process.env.ELEVENLABS_VOICE_ID;
           if (envVoiceId) {
             const mergedDefaults = {
-              ...defaults as ScriptAudioSettings,
+              ...(defaults as unknown as ScriptAudioSettings),
               audioVoice: envVoiceId,
             };
             return NextResponse.json({ data: mergedDefaults });
@@ -55,21 +59,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // If saved settings exist, merge env vars for scriptAudio if audioVoice is empty
-    if (settingsKey === "scriptAudio" && data?.settings_value) {
-      const savedSettings = data.settings_value as ScriptAudioSettings;
+    const defaults = getDefaultSettings(settingsKey);
+    const saved = data?.settings_value ?? null;
+
+    const merged =
+      isPlainObject(defaults) && isPlainObject(saved)
+        ? { ...defaults, ...saved }
+        : saved ?? defaults;
+
+    // Merge environment variable defaults for scriptAudio settings
+    if (settingsKey === "scriptAudio" && isPlainObject(merged)) {
       const envVoiceId = process.env.ELEVENLABS_VOICE_ID;
-      
-      if (!savedSettings.audioVoice && envVoiceId) {
-        const mergedSettings = {
-          ...savedSettings,
-          audioVoice: envVoiceId,
-        };
-        return NextResponse.json({ data: mergedSettings });
+      if (envVoiceId && !String((merged as unknown as ScriptAudioSettings).audioVoice ?? "").trim()) {
+        return NextResponse.json({
+          data: {
+            ...(merged as unknown as ScriptAudioSettings),
+            audioVoice: envVoiceId,
+          },
+        });
       }
     }
 
-    return NextResponse.json({ data: data?.settings_value || null });
+    return NextResponse.json({ data: merged });
   } catch (error) {
     console.error("Unexpected error in GET /api/settings/get:", error);
     return NextResponse.json(
