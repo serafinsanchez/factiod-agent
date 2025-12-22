@@ -45,3 +45,4 @@ public/projects/
 
 # Test output files
 tmp/
+.cursor/

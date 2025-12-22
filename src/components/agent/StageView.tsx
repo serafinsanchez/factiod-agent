@@ -9,6 +9,7 @@ import { slugifyTopic } from "@/lib/slug";
 import type { StepConfig, StepId, VariableKey, SceneAsset, VideoFrameMode, VisualStyleId } from "@/types/agent";
 import { ChevronDown, Download, PenLine, RefreshCw, X } from "lucide-react";
 import { getVisualStylePreset } from "@/prompts/visual-styles";
+import { useSettings } from "@/hooks/use-settings";
 
 import { OutputPreview } from "./OutputPreview";
 import { StepEditor } from "./StepEditor";
@@ -514,6 +515,13 @@ function ThumbnailGenerationStep({
   state: UseAgentPipelineReturn["state"];
   actions: UseAgentPipelineReturn["actions"];
 }) {
+  const publishingSettings = useSettings("publishing");
+  const thumbnailModel = publishingSettings.data?.thumbnailModel ?? "nano_banana_pro";
+  const thumbnailModelLabel =
+    thumbnailModel === "seedream_v4"
+      ? "SeeDream v4 (FAL.ai)"
+      : "Nano Banana Pro (Gemini)";
+
   const inlineThumbnailSrc =
     state.thumbnailImage?.mimeType && state.thumbnailImage?.data
       ? `data:${state.thumbnailImage.mimeType};base64,${state.thumbnailImage.data}`
@@ -550,7 +558,7 @@ function ThumbnailGenerationStep({
             {stepConfig.label}
           </p>
           <p className="text-sm text-zinc-400">
-            Render the latest thumbnail prompt with Gemini 3 Pro Image Preview.
+            Render the latest thumbnail prompt with {thumbnailModelLabel}.
           </p>
         </div>
         <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">

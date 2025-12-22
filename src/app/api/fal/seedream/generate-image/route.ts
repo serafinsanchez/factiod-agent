@@ -53,7 +53,6 @@ export async function POST(request: Request) {
     if (!falKey) {
       return NextResponse.json({ error: "FAL_KEY is not set" }, { status: 500 });
     }
-
     const seedreamPrompt = stripNegativePromptsLine(prompt).output;
 
     fal.config({ credentials: falKey });
@@ -130,9 +129,19 @@ export async function POST(request: Request) {
       seed: typeof raw.seed === "number" ? raw.seed : null,
     });
   } catch (error) {
-    const err = error as unknown as { status?: unknown };
+    const err = error as unknown as {
+      status?: unknown;
+      body?: unknown;
+      requestId?: unknown;
+      message?: unknown;
+      name?: unknown;
+    };
 
     console.error("SeeDream v4 image generation error:", error);
+    const bodyDetail =
+      err?.body && typeof err.body === "object" && "detail" in err.body
+        ? (err.body as Record<string, unknown>).detail
+        : null;
 
     // Preserve upstream HTTP status codes when available (e.g. 422 validation).
     const status =
@@ -140,11 +149,34 @@ export async function POST(request: Request) {
         ? err.status
         : 500;
 
+    const upstreamDetailMessage =
+      typeof bodyDetail === "string"
+        ? bodyDetail
+        : bodyDetail &&
+            typeof bodyDetail === "object" &&
+            "message" in bodyDetail &&
+            typeof (bodyDetail as { message?: unknown }).message === "string"
+          ? (bodyDetail as { message: string }).message
+          : null;
+
+    const baseMessage =
+      upstreamDetailMessage ??
+      (error instanceof Error ? error.message : "Failed to generate image");
+
+    const clientMessage =
+      status === 403 &&
+      typeof upstreamDetailMessage === "string" &&
+      /exhausted balance|top up/i.test(upstreamDetailMessage)
+        ? `${upstreamDetailMessage} (Or switch the thumbnail model to Nano Banana Pro (Gemini) in Settings → Publishing.)`
+        : baseMessage;
+
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Failed to generate image",
-        details: error,
+        error: clientMessage,
+        provider: "fal",
+        upstreamStatus: status,
+        upstreamDetail: upstreamDetailMessage,
+        requestId: typeof err?.requestId === "string" ? err.requestId : null,
       },
       { status },
     );
