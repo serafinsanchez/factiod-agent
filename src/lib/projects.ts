@@ -59,3 +59,30 @@ export function getPublicProjectFileUrl(
   const encodedPath = encodeURI(path);
   return `${PUBLIC_SUPABASE_URL}/storage/v1/object/public/${PROJECTS_BUCKET}/${encodedPath}`;
 }
+
+/**
+ * Get a server-reachable, cache-busted audio URL from an audioPath.
+ * This is the preferred way to get an audio URL for backend consumers
+ * (Whisper, FFmpeg, etc.) that need to fetch the audio over HTTP.
+ * 
+ * @param audioPath - The storage path (e.g., "project-slug/project-slug-audio.mp3")
+ * @returns A cache-busted public URL, or null if audioPath is invalid
+ */
+export function getServerAudioUrl(
+  audioPath: string | null | undefined,
+): string | null {
+  const publicUrl = getPublicProjectFileUrl(audioPath);
+  if (!publicUrl) {
+    return null;
+  }
+  
+  // Validate it's not a blob: URL (should never happen, but guard just in case)
+  if (publicUrl.startsWith("blob:")) {
+    console.warn("[getServerAudioUrl] Received blob: URL, which is invalid for server use");
+    return null;
+  }
+  
+  // Add cache-busting query param
+  const separator = publicUrl.includes("?") ? "&" : "?";
+  return `${publicUrl}${separator}v=${Date.now()}`;
+}

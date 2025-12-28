@@ -4,6 +4,7 @@ import {
   ELEVEN_MULTILINGUAL_V2_MAX_CHARS,
   ELEVEN_V3_SAFE_CHARS,
   generateTtsAudio,
+  TtsError,
   type TtsOptions,
 } from '@/lib/tts/elevenlabs';
 
@@ -15,11 +16,43 @@ async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Extended error with chunk context for orchestrator-level failures
+ */
+export class TtsChunkError extends Error {
+  constructor(
+    message: string,
+    public readonly context: {
+      chunkIndex: number;
+      totalChunks: number;
+      chunkLength: number;
+      attempt: number;
+      depth: number;
+      modelId: string;
+      voice?: string;
+      falRequestId?: string;
+    }
+  ) {
+    super(message);
+    this.name = 'TtsChunkError';
+  }
+}
+
+interface SynthesizeChunkContext {
+  chunkIndex: number;
+  totalChunks: number;
+  modelId: string;
+  voice?: string;
+}
+
 async function synthesizeChunk(
   chunk: string,
   options: TtsOptions,
+  ctx: SynthesizeChunkContext,
   depth = 0,
 ): Promise<Buffer> {
+  const { chunkIndex, totalChunks, modelId, voice } = ctx;
+
   for (let attempt = 1; attempt <= MAX_TTS_ATTEMPTS; attempt++) {
     try {
       return await generateTtsAudio(chunk, {
@@ -27,9 +60,13 @@ async function synthesizeChunk(
         modelId: options.modelId ?? 'eleven_v3',
       });
     } catch (error) {
+      // Extract fal requestId if it's a TtsError
+      const falRequestId = error instanceof TtsError ? error.context.falRequestId : undefined;
+      
       console.warn(
-        `[TTS] Chunk (len ${chunk.length}) attempt ${attempt} failed`,
-        error,
+        `[TTS] Chunk ${chunkIndex + 1}/${totalChunks} (len ${chunk.length}) attempt ${attempt}/${MAX_TTS_ATTEMPTS} failed` +
+        (falRequestId ? ` (falRequestId: ${falRequestId})` : ''),
+        error instanceof Error ? error.message : error,
       );
 
       if (attempt < MAX_TTS_ATTEMPTS) {
@@ -38,7 +75,21 @@ async function synthesizeChunk(
       }
 
       if (chunk.length <= MIN_SPLIT_CHARS) {
-        throw error;
+        // Re-throw with chunk context
+        const baseMessage = error instanceof Error ? error.message : String(error);
+        throw new TtsChunkError(
+          `TTS failed for chunk ${chunkIndex + 1}/${totalChunks} after ${attempt} attempts: ${baseMessage}`,
+          {
+            chunkIndex,
+            totalChunks,
+            chunkLength: chunk.length,
+            attempt,
+            depth,
+            modelId,
+            voice,
+            falRequestId,
+          }
+        );
       }
 
       const nextLimit = Math.max(
@@ -48,11 +99,24 @@ async function synthesizeChunk(
       const fallbackChunks = chunkForElevenV3(chunk, nextLimit);
 
       if (fallbackChunks.length <= 1) {
-        throw error;
+        const baseMessage = error instanceof Error ? error.message : String(error);
+        throw new TtsChunkError(
+          `TTS failed for chunk ${chunkIndex + 1}/${totalChunks} (cannot split further): ${baseMessage}`,
+          {
+            chunkIndex,
+            totalChunks,
+            chunkLength: chunk.length,
+            attempt,
+            depth,
+            modelId,
+            voice,
+            falRequestId,
+          }
+        );
       }
 
       console.log(
-        `[TTS] Splitting chunk (len ${chunk.length}) into ${fallbackChunks.length} sub-chunks (limit ${nextLimit})`,
+        `[TTS] Splitting chunk ${chunkIndex + 1}/${totalChunks} (len ${chunk.length}) into ${fallbackChunks.length} sub-chunks (limit ${nextLimit})`,
       );
 
       const buffers: Buffer[] = [];
@@ -60,7 +124,12 @@ async function synthesizeChunk(
         console.log(
           `[TTS] → Sub-chunk ${subIndex + 1}/${fallbackChunks.length} (${subChunk.length} chars) depth ${depth + 1}`,
         );
-        buffers.push(await synthesizeChunk(subChunk, options, depth + 1));
+        buffers.push(await synthesizeChunk(
+          subChunk, 
+          options, 
+          { ...ctx, chunkIndex: subIndex, totalChunks: fallbackChunks.length },
+          depth + 1
+        ));
       }
 
       return Buffer.concat(buffers);
@@ -96,7 +165,12 @@ export async function generateNarrationMultiChunk(
     console.log(
       `[TTS] Generating chunk ${index + 1}/${chunks.length} (${chunk.length} chars)`,
     );
-    buffers.push(await synthesizeChunk(chunk, options));
+    buffers.push(await synthesizeChunk(chunk, options, {
+      chunkIndex: index,
+      totalChunks: chunks.length,
+      modelId: targetModel,
+      voice: options.voiceId,
+    }));
   }
 
   return Buffer.concat(buffers);

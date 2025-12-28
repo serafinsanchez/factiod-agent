@@ -11,7 +11,7 @@ import {
   getAlignmentStats,
 } from "@/lib/audio/timestamp-alignment";
 import { getFramesForDuration } from "@/lib/video/fal-client";
-import { getOrCreateProjectSlug, getPublicProjectFileUrl } from "@/lib/projects";
+import { getOrCreateProjectSlug, getPublicProjectFileUrl, getServerAudioUrl } from "@/lib/projects";
 import type {
   AudienceMode,
   ModelId,
@@ -417,8 +417,8 @@ export function useAgentPipeline() {
   const runNarrationTimestampsStep = useCallback(
     async (audioUrlOverride?: string) => {
       const currentPipeline = pipelineRef.current;
-      const audioUrl =
-        audioUrlOverride || getPublicProjectFileUrl(currentPipeline.audioPath);
+      // Use cache-busted, server-reachable URL to ensure we always fetch the latest audio
+      const audioUrl = audioUrlOverride || getServerAudioUrl(currentPipeline.audioPath);
 
       if (!audioUrl) {
         const fallbackError = "Generate narration audio before extracting timestamps.";
@@ -521,7 +521,24 @@ export function useAgentPipeline() {
                 };
               });
               
-              timestampsWithScenes = { ...timestamps, sceneTimestamps };
+              // Compute alignment stats for diagnostics
+              const alignmentStats = getAlignmentStats(alignmentResults);
+              console.log(`📊 Alignment stats:`, alignmentStats);
+              
+              timestampsWithScenes = { 
+                ...timestamps, 
+                sceneTimestamps,
+                // Surface alignment quality in the data for UI visibility
+                alignmentStats: {
+                  totalScenes: alignmentStats.totalScenes,
+                  fuzzyMatched: alignmentStats.fuzzyMatched,
+                  sequential: alignmentStats.sequential,
+                  estimated: alignmentStats.estimated,
+                  split: alignmentStats.split,
+                  averageConfidence: Math.round(alignmentStats.averageConfidence * 100) / 100,
+                  maxDuration: Math.round(alignmentStats.maxDuration * 100) / 100,
+                },
+              };
             } catch (alignmentError) {
               console.warn("Scene re-alignment failed after timestamp extraction:", alignmentError);
             }

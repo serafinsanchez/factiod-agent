@@ -12,6 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import {
   assembleVideo,
   checkFfmpegAvailable,
@@ -40,16 +41,32 @@ interface AssembleResponse {
   height: number;
   /** Processing time in milliseconds */
   durationMs: number;
+  /** Request ID for tracing */
+  requestId: string;
 }
 
-export async function POST(request: NextRequest) {
+interface ErrorResponse {
+  error: string;
+  details?: string;
+  requestId: string;
+  stepId: string;
+  context?: Record<string, unknown>;
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse<AssembleResponse | ErrorResponse>> {
+  const requestId = randomUUID().slice(0, 8);
+  const stepId = "videoAssembly";
+
   try {
     // Check FFmpeg availability
     const ffmpegAvailable = await checkFfmpegAvailable();
     if (!ffmpegAvailable) {
       return NextResponse.json(
         {
-          error: "FFmpeg is not available on this system. Video assembly requires FFmpeg to be installed.",
+          error: "FFmpeg is not available on this system",
+          details: "Video assembly requires FFmpeg to be installed.",
+          requestId,
+          stepId,
         },
         { status: 500 }
       );
@@ -61,7 +78,11 @@ export async function POST(request: NextRequest) {
     // Validate manifest
     if (!body.manifest) {
       return NextResponse.json(
-        { error: "manifest is required" },
+        { 
+          error: "manifest is required",
+          requestId,
+          stepId,
+        },
         { status: 400 }
       );
     }
@@ -70,14 +91,36 @@ export async function POST(request: NextRequest) {
 
     if (!manifest.clips || manifest.clips.length === 0) {
       return NextResponse.json(
-        { error: "manifest.clips array is required and must not be empty" },
+        { 
+          error: "manifest.clips array is required and must not be empty",
+          requestId,
+          stepId,
+        },
         { status: 400 }
       );
     }
 
     if (!manifest.audioUrl) {
       return NextResponse.json(
-        { error: "manifest.audioUrl is required" },
+        { 
+          error: "manifest.audioUrl is required",
+          requestId,
+          stepId,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate audioUrl is not a blob: URL
+    if (manifest.audioUrl.startsWith("blob:")) {
+      return NextResponse.json(
+        {
+          error: "manifest.audioUrl cannot be a blob: URL",
+          details: "The audio must be persisted to storage before video assembly. Regenerate audio.",
+          requestId,
+          stepId,
+          context: { audioUrl: manifest.audioUrl.substring(0, 50) },
+        },
         { status: 400 }
       );
     }
@@ -86,13 +129,23 @@ export async function POST(request: NextRequest) {
     for (const clip of manifest.clips) {
       if (!clip.videoUrl) {
         return NextResponse.json(
-          { error: `Clip ${clip.clipNumber} is missing videoUrl` },
+          { 
+            error: `Clip ${clip.clipNumber} is missing videoUrl`,
+            requestId,
+            stepId,
+            context: { clipNumber: clip.clipNumber },
+          },
           { status: 400 }
         );
       }
       if (typeof clip.audioStartSec !== "number" || typeof clip.audioEndSec !== "number") {
         return NextResponse.json(
-          { error: `Clip ${clip.clipNumber} is missing audio timing information` },
+          { 
+            error: `Clip ${clip.clipNumber} is missing audio timing information`,
+            requestId,
+            stepId,
+            context: { clipNumber: clip.clipNumber },
+          },
           { status: 400 }
         );
       }
@@ -121,10 +174,10 @@ export async function POST(request: NextRequest) {
     };
 
     // Assemble the video
-    console.log(`🎬 Starting video assembly with ${manifest.clips.length} clips...`);
+    console.log(`🎬 [${requestId}] Starting video assembly with ${manifest.clips.length} clips...`);
     
     const finalPath = await assembleVideo(resolvedManifest, {}, (step, progress) => {
-      console.log(`📊 [${progress.toFixed(0)}%] ${step}`);
+      console.log(`📊 [${requestId}] [${progress.toFixed(0)}%] ${step}`);
     });
 
     // Get video info
@@ -145,17 +198,23 @@ export async function POST(request: NextRequest) {
       width: videoInfo.width,
       height: videoInfo.height,
       durationMs,
+      requestId,
     };
 
-    console.log(`✅ Video assembly complete in ${(durationMs / 1000).toFixed(1)}s`);
+    console.log(`✅ [${requestId}] Video assembly complete in ${(durationMs / 1000).toFixed(1)}s`);
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error("Video assembly error:", error);
+    console.error(`[${requestId}] Video assembly error:`, error);
 
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: `Video assembly failed: ${message}` },
+      { 
+        error: "Video assembly failed",
+        details: message,
+        requestId,
+        stepId,
+      },
       { status: 500 }
     );
   }

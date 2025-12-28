@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import type { PipelineState } from "@/types/agent";
-import { getOrCreateProjectSlug } from "@/lib/projects";
+import { getOrCreateProjectSlug, getServerAudioUrl } from "@/lib/projects";
 import { ensureStepState } from "./pipeline-types";
 
 type UseVideoAssemblyOptions = {
@@ -35,8 +35,13 @@ export function useVideoAssembly({
       return;
     }
 
-    if (!scriptAudioUrl) {
-      setVideoAssemblyError("No narration audio available. Generate audio first.");
+    // Derive server-reachable audio URL from pipeline.audioPath (never use blob: for backend)
+    const audioUrlForServer = getServerAudioUrl(pipeline.audioPath);
+
+    if (!audioUrlForServer) {
+      setVideoAssemblyError(
+        "Narration audio is not persisted yet. Regenerate audio or reload the project."
+      );
       return;
     }
 
@@ -117,6 +122,60 @@ export function useVideoAssembly({
       };
     });
     
+    // Sort clips by audioStartSec to ensure proper ordering
+    clips.sort((a, b) => {
+      if (a.audioStartSec !== b.audioStartSec) {
+        return a.audioStartSec - b.audioStartSec;
+      }
+      return a.clipNumber - b.clipNumber;
+    });
+
+    // Validate and fix timing: ensure monotonic, contiguous timings
+    let timingWarnings: string[] = [];
+    let previousEnd = 0;
+    
+    for (let i = 0; i < clips.length; i++) {
+      const clip = clips[i];
+      
+      // Check for overlap with previous clip
+      if (clip.audioStartSec < previousEnd - 0.1) {
+        timingWarnings.push(
+          `Clip ${clip.clipNumber} overlaps with previous (starts at ${clip.audioStartSec.toFixed(2)}s, prev ends at ${previousEnd.toFixed(2)}s)`
+        );
+        // Fix: shift this clip to start at previous end
+        const duration = clip.audioEndSec - clip.audioStartSec;
+        clip.audioStartSec = previousEnd;
+        clip.audioEndSec = previousEnd + duration;
+        clip._timingSource = `${clip._timingSource}-fixed`;
+      }
+      
+      // Check for large gap (>2s) from previous clip
+      const gap = clip.audioStartSec - previousEnd;
+      if (gap > 2 && previousEnd > 0) {
+        timingWarnings.push(
+          `Large gap (${gap.toFixed(2)}s) before clip ${clip.clipNumber}`
+        );
+      }
+      
+      // Check for invalid duration
+      if (clip.audioEndSec <= clip.audioStartSec) {
+        timingWarnings.push(
+          `Clip ${clip.clipNumber} has invalid duration (${clip.audioStartSec.toFixed(2)}s - ${clip.audioEndSec.toFixed(2)}s)`
+        );
+        // Fix: give it a minimum 3s duration
+        clip.audioEndSec = clip.audioStartSec + 3;
+        clip._timingSource = `${clip._timingSource}-fixed`;
+      }
+      
+      previousEnd = clip.audioEndSec;
+    }
+
+    // Log warnings if any timing issues were detected
+    if (timingWarnings.length > 0) {
+      console.warn(`⚠️ Clip timing issues detected and auto-fixed:`);
+      timingWarnings.forEach((w) => console.warn(`   ${w}`));
+    }
+
     // Log timing breakdown
     console.log(`📊 Clip timing breakdown:`);
     clips.forEach((clip) => {
@@ -148,7 +207,7 @@ export function useVideoAssembly({
           body: JSON.stringify({
             manifest: {
               clips,
-              audioUrl: scriptAudioUrl,
+              audioUrl: audioUrlForServer,
               outputPath: `public/projects/${projectSlug}/${outputFilename}.mp4`,
               audioStartOffset,
               audioEndOffset,
@@ -210,7 +269,7 @@ export function useVideoAssembly({
       setIsAssemblingVideo(false);
       setVideoAssemblyProgress(null);
     }
-  }, [pipeline, scriptAudioUrl, setPipeline, queueAutoSave]);
+  }, [pipeline, setPipeline, queueAutoSave]);
 
   const resetAssemblyState = useCallback(() => {
     setIsAssemblingVideo(false);

@@ -88,6 +88,24 @@ export interface TranscriptionOptions {
 }
 
 /**
+ * Extended error with Whisper context for better debugging
+ */
+export class WhisperError extends Error {
+  constructor(
+    message: string,
+    public readonly context: {
+      modelId: WhisperModelId;
+      model: string;
+      audioUrl: string; // Redacted for safety
+      falRequestId?: string;
+    }
+  ) {
+    super(message);
+    this.name = 'WhisperError';
+  }
+}
+
+/**
  * Transcribe audio and extract word-level timestamps
  * 
  * @param audioUrl - URL of the audio file to transcribe
@@ -101,33 +119,64 @@ export async function transcribeWithTimestamps(
   const { modelId = "WHISPER", language, task = "transcribe" } = options;
   const model = WHISPER_MODELS[modelId];
 
-  console.log(`🎤 Starting audio transcription with ${modelId} (v2)...`);
-  console.log(`🔗 Audio URL: ${audioUrl.substring(0, 80)}...`);
+  // Redact URL for logging (show domain only)
+  const redactedUrl = (() => {
+    try {
+      const parsed = new URL(audioUrl);
+      return `${parsed.origin}/...${audioUrl.slice(-20)}`;
+    } catch {
+      return audioUrl.substring(0, 40) + '...';
+    }
+  })();
 
-  const result = await fal.subscribe(model, {
-    input: {
-      audio_url: audioUrl,
-      task,
-      // Cast language to satisfy fal.ai's strict union type (validated at runtime by their API)
-      language: language as "en" | undefined,
-      // Request structured segment + word detail from Whisper v3
-      chunk_level: "segment",
-      version: "3",
-    },
-    logs: true,
-    onQueueUpdate: (update) => {
-      if (update.status === "IN_PROGRESS") {
-        console.log(`⏳ Transcription in progress...`);
-      }
-    },
-  });
+  const baseContext = {
+    modelId,
+    model,
+    audioUrl: redactedUrl,
+  };
+
+  console.log(`🎤 Starting audio transcription with ${modelId} (v2)...`);
+  console.log(`🔗 Audio URL: ${redactedUrl}`);
+
+  let result: { data?: unknown; requestId?: string };
+  try {
+    result = await fal.subscribe(model, {
+      input: {
+        audio_url: audioUrl,
+        task,
+        // Cast language to satisfy fal.ai's strict union type (validated at runtime by their API)
+        language: language as "en" | undefined,
+        // Request structured segment + word detail from Whisper v3
+        chunk_level: "segment",
+        version: "3",
+      },
+      logs: true,
+      onQueueUpdate: (update) => {
+        if (update.status === "IN_PROGRESS") {
+          console.log(`⏳ Transcription in progress...`);
+        }
+      },
+    }) as { data?: unknown; requestId?: string };
+  } catch (falError) {
+    const errorMessage = falError instanceof Error ? falError.message : String(falError);
+    console.error(`[Whisper] fal.ai call failed:`, falError);
+    throw new WhisperError(
+      `Whisper transcription failed: ${errorMessage}`,
+      { ...baseContext, falRequestId: undefined }
+    );
+  }
+
+  const falRequestId = result.requestId;
+  if (falRequestId) {
+    console.log(`🎤 fal.ai requestId: ${falRequestId}`);
+  }
 
   // Handle both response formats: result.data (from @fal-ai/client) or direct result
   // The response structure can vary: result.data.segments or result.segments
   // Cast to our internal WhisperResult type to handle all possible response formats
   const rawResponse = (result.data || result) as unknown as WhisperResult;
   
-  console.log(`✅ Transcription complete`);
+  console.log(`✅ Transcription complete` + (falRequestId ? ` (requestId: ${falRequestId})` : ''));
   console.log(`📝 Raw response keys:`, Object.keys(rawResponse));
   console.log(`📝 Full text length: ${rawResponse.text?.length || 0} characters`);
   console.log(`📝 Has segments:`, Boolean(rawResponse.segments));
@@ -135,7 +184,15 @@ export async function transcribeWithTimestamps(
   console.log(`📝 Has words:`, Boolean(rawResponse.words));
 
   // Parse the response into our structured format
-  return parseWhisperResponse(rawResponse);
+  try {
+    return parseWhisperResponse(rawResponse);
+  } catch (parseError) {
+    const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+    throw new WhisperError(
+      `Failed to parse Whisper response: ${errorMessage}`,
+      { ...baseContext, falRequestId }
+    );
+  }
 }
 
 /**

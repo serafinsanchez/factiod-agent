@@ -64,6 +64,25 @@ function isPresetVoiceName(voice: string): boolean {
   return PRESET_VOICE_NAMES.has(voice.toLowerCase());
 }
 
+/**
+ * Extended error with TTS context for better debugging
+ */
+export class TtsError extends Error {
+  constructor(
+    message: string,
+    public readonly context: {
+      modelId: string;
+      voice: string;
+      endpoint: string;
+      textLength: number;
+      falRequestId?: string;
+    }
+  ) {
+    super(message);
+    this.name = 'TtsError';
+  }
+}
+
 export async function generateTtsAudio(
   text: string,
   options: TtsOptions = {},
@@ -95,29 +114,62 @@ export async function generateTtsAudio(
     throw new Error(`Unknown model ID: ${modelId}. Supported: ${Object.keys(MODEL_TO_ENDPOINT).join(', ')}`);
   }
 
-  console.log(`[TTS] Calling fal.ai endpoint: ${endpoint} with voice: ${voice}`);
+  const baseContext = {
+    modelId,
+    voice,
+    endpoint,
+    textLength: text.length,
+  };
 
-  const result = (await fal.subscribe(endpoint, {
-    input: {
-      text,
-      voice,
-      stability: options.stability ?? 0.5,
-      similarity_boost: options.similarityBoost ?? 0.75,
-    },
-  })) as FalTtsResult;
+  console.log(`[TTS] Calling fal.ai endpoint: ${endpoint} with voice: ${voice} (${text.length} chars)`);
+
+  let result: FalTtsResult;
+  try {
+    result = (await fal.subscribe(endpoint, {
+      input: {
+        text,
+        voice,
+        stability: options.stability ?? 0.5,
+        similarity_boost: options.similarityBoost ?? 0.75,
+      },
+    })) as FalTtsResult;
+  } catch (falError) {
+    const errorMessage = falError instanceof Error ? falError.message : String(falError);
+    console.error(`[TTS] fal.ai call failed:`, falError);
+    throw new TtsError(
+      `fal.ai TTS call failed: ${errorMessage}`,
+      { ...baseContext, falRequestId: undefined }
+    );
+  }
+
+  const falRequestId = result.requestId;
+  console.log(`[TTS] fal.ai requestId: ${falRequestId}`);
 
   // Download the audio from the returned URL
   const audioUrl = result.data.audio.url;
   console.log(`[TTS] Downloading audio from: ${audioUrl}`);
-  const res = await fetch(audioUrl);
+  
+  let res: Response;
+  try {
+    res = await fetch(audioUrl);
+  } catch (fetchError) {
+    const errorMessage = fetchError instanceof Error ? fetchError.message : String(fetchError);
+    throw new TtsError(
+      `Failed to download audio from fal.ai: ${errorMessage}`,
+      { ...baseContext, falRequestId }
+    );
+  }
 
   if (!res.ok) {
-    throw new Error(`Failed to download audio from fal.ai: ${res.status} ${res.statusText}`);
+    throw new TtsError(
+      `Failed to download audio from fal.ai: ${res.status} ${res.statusText}`,
+      { ...baseContext, falRequestId }
+    );
   }
 
   const arrayBuffer = await res.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
-  console.log(`[TTS] Downloaded audio buffer size: ${buffer.length} bytes`);
+  console.log(`[TTS] Downloaded audio buffer size: ${buffer.length} bytes (requestId: ${falRequestId})`);
   
   return buffer;
 }

@@ -325,6 +325,10 @@ export function alignScenesToTimestamps(
 /**
  * Split a scene that exceeds the 10-second limit into multiple shorter scenes.
  * Maintains the same visual description with different micro-movements implied.
+ * 
+ * CRITICAL: This function guarantees:
+ * 1. Every produced scene has duration >= MIN_SCENE_DURATION_SEC (3s) and <= MAX_SCENE_DURATION_SEC (10s)
+ * 2. The union of all scenes exactly covers [startSec, endSec] with no gaps or truncation
  */
 function splitLongScene(
   scene: ProductionScene,
@@ -332,10 +336,24 @@ function splitLongScene(
   endSec: number,
   timestamps: NarrationTimestampsData
 ): ProductionScene[] {
-  const duration = endSec - startSec;
-  const numParts = Math.ceil(duration / MAX_SCENE_DURATION_SEC);
+  const totalDuration = endSec - startSec;
+  
+  // If already within limits, return as-is
+  if (totalDuration <= MAX_SCENE_DURATION_SEC) {
+    return [{
+      ...scene,
+      startSec,
+      endSec,
+      estimatedDurationSec: totalDuration,
+    }];
+  }
+  
+  // Calculate number of parts needed such that each part is <= MAX_SCENE_DURATION_SEC
+  // and >= MIN_SCENE_DURATION_SEC when possible
+  const numParts = Math.ceil(totalDuration / MAX_SCENE_DURATION_SEC);
+  const idealPartDuration = totalDuration / numParts;
+  
   const splitScenes: ProductionScene[] = [];
-
   let currentStart = startSec;
   
   for (let i = 0; i < numParts; i++) {
@@ -343,17 +361,62 @@ function splitLongScene(
     let partEnd: number;
 
     if (isLastPart) {
+      // Last part MUST end at endSec to preserve full coverage
       partEnd = endSec;
     } else {
-      // Find natural split point
-      const targetEnd = currentStart + TARGET_SCENE_DURATION_SEC;
-      const splitPoint = findNaturalSplitPoint(currentStart, endSec, timestamps);
-      partEnd = splitPoint ?? Math.min(targetEnd, endSec);
+      // Calculate target end for this part
+      const targetEnd = currentStart + idealPartDuration;
+      
+      // Check if remaining duration after this part would leave a valid last segment
+      const remainingAfterTarget = endSec - targetEnd;
+      const remainingParts = numParts - i - 1;
+      
+      // If we're the second-to-last part and the remaining would be >10s, adjust
+      if (remainingParts === 1 && remainingAfterTarget > MAX_SCENE_DURATION_SEC) {
+        // Split such that last part is exactly MAX_SCENE_DURATION_SEC
+        partEnd = endSec - MAX_SCENE_DURATION_SEC;
+      } else {
+        // Try to find a natural split point near the target
+        const splitPoint = findNaturalSplitPoint(currentStart, Math.min(targetEnd + 2, endSec - MIN_SCENE_DURATION_SEC), timestamps);
+        
+        if (splitPoint && splitPoint > currentStart + MIN_SCENE_DURATION_SEC) {
+          partEnd = splitPoint;
+        } else {
+          partEnd = Math.min(targetEnd, endSec - MIN_SCENE_DURATION_SEC);
+        }
+      }
+      
+      // Clamp to valid range: at least MIN_SCENE_DURATION_SEC, at most MAX_SCENE_DURATION_SEC
+      const partDuration = partEnd - currentStart;
+      if (partDuration < MIN_SCENE_DURATION_SEC) {
+        partEnd = currentStart + MIN_SCENE_DURATION_SEC;
+      } else if (partDuration > MAX_SCENE_DURATION_SEC) {
+        partEnd = currentStart + MAX_SCENE_DURATION_SEC;
+      }
+      
+      // Ensure we don't overshoot endSec
+      if (partEnd > endSec) {
+        partEnd = endSec;
+      }
     }
 
-    // Ensure minimum duration
-    if (partEnd - currentStart < MIN_SCENE_DURATION_SEC && !isLastPart) {
-      partEnd = Math.min(currentStart + MIN_SCENE_DURATION_SEC, endSec);
+    // Final validation: ensure this part's duration is valid
+    let finalPartEnd = partEnd;
+    const partDuration = finalPartEnd - currentStart;
+    
+    // If duration exceeds max (can happen on last part), we need to split further
+    if (partDuration > MAX_SCENE_DURATION_SEC && isLastPart) {
+      // Recursively split this oversized last segment
+      const subScenes = splitLongScene(scene, currentStart, finalPartEnd, timestamps);
+      for (let j = 0; j < subScenes.length; j++) {
+        const subScene = subScenes[j];
+        splitScenes.push({
+          ...subScene,
+          sceneNumber: scene.sceneNumber + (splitScenes.length + j) * 0.1,
+          transitionHint: splitScenes.length === 0 && j === 0 ? scene.transitionHint : "same-framing",
+        });
+      }
+      break;
     }
 
     // Get the narration text for this portion (approximate)
@@ -368,13 +431,13 @@ function splitLongScene(
       sceneNumber: scene.sceneNumber + i * 0.1, // e.g., 5, 5.1, 5.2
       narrationText: partNarration || scene.narrationText, // Fallback to full text
       startSec: currentStart,
-      endSec: partEnd,
-      estimatedDurationSec: partEnd - currentStart,
+      endSec: finalPartEnd,
+      estimatedDurationSec: finalPartEnd - currentStart,
       // Keep same visual description - the video will just continue the motion
       transitionHint: i === 0 ? scene.transitionHint : "same-framing",
     });
 
-    currentStart = partEnd;
+    currentStart = finalPartEnd;
   }
 
   return splitScenes;
