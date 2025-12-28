@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server";
 import { fal } from "@fal-ai/client";
 
-import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { PROJECTS_BUCKET, buildProjectThumbnailPath } from "@/lib/projects";
+import { buildProjectThumbnailPath, getPublicProjectFileUrl } from "@/lib/projects";
+import {
+  uploadThumbnailToStorage,
+  canConstructPublicUrl,
+  createPublicUrlUnavailableWarning,
+  createInlineTooLargeWarning,
+  MAX_INLINE_THUMBNAIL_BYTES,
+} from "@/lib/thumbnail/upload";
+import type {
+  ThumbnailGenerationSuccess,
+  ThumbnailGenerationError,
+  ThumbnailWarning,
+} from "@/lib/thumbnail/types";
 
 const SEEDREAM_MODEL_ID = "fal-ai/bytedance/seedream/v4/text-to-image" as const;
 
@@ -37,6 +48,8 @@ function stripNegativePromptsLine(input: string): {
 }
 
 export async function POST(request: Request) {
+  let requestId: string | null = null;
+
   try {
     const { prompt, projectSlug, thumbnailPath: providedThumbnailPath } =
       (await request.json()) as {
@@ -46,13 +59,23 @@ export async function POST(request: Request) {
       };
 
     if (!prompt || typeof prompt !== "string") {
-      return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
+      const errorResponse: ThumbnailGenerationError = {
+        error: "Prompt is required",
+        provider: "fal",
+      };
+      return NextResponse.json(errorResponse, { status: 400 });
     }
 
     const falKey = process.env.FAL_KEY;
     if (!falKey) {
-      return NextResponse.json({ error: "FAL_KEY is not set" }, { status: 500 });
+      const errorResponse: ThumbnailGenerationError = {
+        error: "FAL_KEY is not set",
+        code: "MISSING_API_KEY",
+        provider: "fal",
+      };
+      return NextResponse.json(errorResponse, { status: 500 });
     }
+
     const seedreamPrompt = stripNegativePromptsLine(prompt).output;
 
     fal.config({ credentials: falKey });
@@ -68,30 +91,60 @@ export async function POST(request: Request) {
     const result = await fal.subscribe(SEEDREAM_MODEL_ID, { input: falInput });
 
     const raw = (result.data || result) as unknown as SeedreamResponse;
-    const firstImageUrl = raw.images?.[0]?.url;
+    const firstImage = raw.images?.[0];
+    const firstImageUrl = firstImage?.url;
+    const providerContentType = firstImage?.content_type;
 
     if (!firstImageUrl || typeof firstImageUrl !== "string") {
-      return NextResponse.json(
-        { error: "No image URL returned from SeeDream v4", details: raw },
-        { status: 500 },
-      );
+      const errorResponse: ThumbnailGenerationError = {
+        error: "No image URL returned from SeeDream v4",
+        code: "NO_IMAGE_URL",
+        provider: "fal",
+        debug: { requestId },
+      };
+      return NextResponse.json(errorResponse, { status: 500 });
     }
 
+    // =========================================================================
+    // Download the image from fal's CDN
+    // =========================================================================
     const imageRes = await fetch(firstImageUrl);
     if (!imageRes.ok) {
-      return NextResponse.json(
-        {
-          error: `Failed to download generated image: ${imageRes.status} ${imageRes.statusText}`,
-        },
-        { status: 500 },
-      );
+      const errorResponse: ThumbnailGenerationError = {
+        error: `Failed to download generated image: ${imageRes.status} ${imageRes.statusText}`,
+        code: "DOWNLOAD_FAILED",
+        provider: "fal",
+        debug: { requestId, upstreamStatus: imageRes.status },
+      };
+      return NextResponse.json(errorResponse, { status: 500 });
     }
 
-    const contentType = imageRes.headers.get("content-type") || "image/png";
+    const contentType =
+      imageRes.headers.get("content-type") || providerContentType || "image/png";
     const arrayBuffer = await imageRes.arrayBuffer();
     const binary = Buffer.from(arrayBuffer);
+    const imageSize = binary.length;
 
+    // =========================================================================
+    // Prepare base64 (with size guard)
+    // =========================================================================
+    const warnings: ThumbnailWarning[] = [];
+    let imageBase64: string | undefined;
+    let mimeType: string | undefined;
+
+    if (imageSize <= MAX_INLINE_THUMBNAIL_BYTES) {
+      imageBase64 = binary.toString("base64");
+      mimeType = contentType;
+    } else {
+      warnings.push(createInlineTooLargeWarning(imageSize));
+    }
+
+    // =========================================================================
+    // Upload to Supabase storage (best-effort)
+    // =========================================================================
+    let persisted = false;
     let thumbnailPath: string | undefined;
+    let thumbnailUrl: string | undefined;
 
     if (typeof projectSlug === "string" && projectSlug.trim().length > 0) {
       const slug = projectSlug.trim();
@@ -101,33 +154,49 @@ export async function POST(request: Request) {
           ? providedThumbnailPath.trim()
           : buildProjectThumbnailPath(slug, { unique: true });
 
-      try {
-        const supabase = getSupabaseServerClient();
-        const { error: uploadError } = await supabase.storage
-          .from(PROJECTS_BUCKET)
-          .upload(path, binary, {
-            contentType,
-            upsert: true,
-          });
+      const uploadResult = await uploadThumbnailToStorage({
+        binary,
+        path,
+        contentType,
+      });
 
-        if (uploadError) {
-          console.error("Supabase thumbnail upload error:", uploadError);
+      persisted = uploadResult.persisted;
+      thumbnailPath = uploadResult.thumbnailPath;
+      warnings.push(...uploadResult.warnings);
+
+      // Construct public URL if persisted
+      if (persisted && thumbnailPath) {
+        if (canConstructPublicUrl()) {
+          thumbnailUrl = getPublicProjectFileUrl(thumbnailPath) ?? undefined;
         } else {
-          thumbnailPath = path;
+          warnings.push(createPublicUrlUnavailableWarning());
         }
-      } catch (storageError) {
-        console.error(
-          "Supabase configuration/storage error while uploading thumbnail:",
-          storageError,
-        );
       }
     }
 
-    return NextResponse.json({
+    // =========================================================================
+    // Fallback: if not persisted, use the provider's temporary URL
+    // =========================================================================
+    if (!thumbnailUrl) {
+      thumbnailUrl = firstImageUrl;
+    }
+
+    // =========================================================================
+    // Build unified success response
+    // =========================================================================
+    const successResponse: ThumbnailGenerationSuccess = {
+      provider: "fal",
+      imageBase64,
+      mimeType,
       thumbnailPath,
-      mimeType: contentType,
+      thumbnailUrl,
+      persisted,
+      warnings: warnings.length > 0 ? warnings : undefined,
+      debug: { requestId },
       seed: typeof raw.seed === "number" ? raw.seed : null,
-    });
+    };
+
+    return NextResponse.json(successResponse);
   } catch (error) {
     const err = error as unknown as {
       status?: unknown;
@@ -137,7 +206,13 @@ export async function POST(request: Request) {
       name?: unknown;
     };
 
+    // Extract requestId if available
+    if (typeof err?.requestId === "string") {
+      requestId = err.requestId;
+    }
+
     console.error("SeeDream v4 image generation error:", error);
+
     const bodyDetail =
       err?.body && typeof err.body === "object" && "detail" in err.body
         ? (err.body as Record<string, unknown>).detail
@@ -163,6 +238,7 @@ export async function POST(request: Request) {
       upstreamDetailMessage ??
       (error instanceof Error ? error.message : "Failed to generate image");
 
+    // Add helpful guidance for common errors
     const clientMessage =
       status === 403 &&
       typeof upstreamDetailMessage === "string" &&
@@ -170,16 +246,17 @@ export async function POST(request: Request) {
         ? `${upstreamDetailMessage} (Or switch the thumbnail model to Nano Banana Pro (Gemini) in Settings → Publishing.)`
         : baseMessage;
 
-    return NextResponse.json(
-      {
-        error: clientMessage,
-        provider: "fal",
+    const errorResponse: ThumbnailGenerationError = {
+      error: clientMessage,
+      code: status === 403 ? "QUOTA_EXCEEDED" : undefined,
+      provider: "fal",
+      debug: {
+        requestId,
         upstreamStatus: status,
-        upstreamDetail: upstreamDetailMessage,
-        requestId: typeof err?.requestId === "string" ? err.requestId : null,
       },
-      { status },
-    );
+    };
+
+    return NextResponse.json(errorResponse, { status });
   }
 }
 

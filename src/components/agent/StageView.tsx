@@ -522,11 +522,12 @@ function ThumbnailGenerationStep({
       ? "SeeDream v4 (FAL.ai)"
       : "Nano Banana Pro (Gemini)";
 
+  const thumbnailImage = state.thumbnailImage;
   const inlineThumbnailSrc =
-    state.thumbnailImage?.mimeType && state.thumbnailImage?.data
-      ? `data:${state.thumbnailImage.mimeType};base64,${state.thumbnailImage.data}`
+    thumbnailImage?.mimeType && thumbnailImage?.data
+      ? `data:${thumbnailImage.mimeType};base64,${thumbnailImage.data}`
       : undefined;
-  const thumbnailSrc = inlineThumbnailSrc ?? state.thumbnailImage?.url ?? undefined;
+  const thumbnailSrc = inlineThumbnailSrc ?? thumbnailImage?.url ?? undefined;
   const promptReady = Boolean(state.pipeline.thumbnailPrompt?.trim());
   const stepState = state.pipeline.steps[stepConfig.id];
   const status = stepState?.status ?? "idle";
@@ -549,6 +550,12 @@ function ThumbnailGenerationStep({
           : "text-zinc-400";
   const buttonDisabled = isRunning || !promptReady;
   const errorMessage = stepState?.errorMessage ?? state.thumbnailError;
+
+  // Persistence status
+  const hasThumbnail = Boolean(thumbnailSrc);
+  const isPersisted = thumbnailImage?.persisted === true;
+  const warnings = thumbnailImage?.warnings;
+  const showNotSavedWarning = hasThumbnail && !isPersisted && status === "success";
 
   return (
     <div className="space-y-4 rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-4">
@@ -598,6 +605,29 @@ function ThumbnailGenerationStep({
 
       {thumbnailSrc ? (
         <div className="space-y-4">
+          {/* "Not saved" warning banner */}
+          {showNotSavedWarning && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
+              <p className="font-medium text-amber-100">
+                Rendered, but not saved to storage
+              </p>
+              <p className="mt-1 text-amber-200/80">
+                This thumbnail won&apos;t persist after you refresh the page. Re-generate
+                after fixing the issue below, or download it now.
+              </p>
+              {warnings && warnings.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {warnings.slice(0, 2).map((w, i) => (
+                    <li key={i} className="text-xs text-amber-200/70">
+                      <span className="font-mono text-amber-300">[{w.code}]</span>{" "}
+                      {w.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           <div className="overflow-hidden rounded-2xl border border-zinc-900">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={thumbnailSrc} alt="Generated thumbnail" className="w-full" />
@@ -606,6 +636,9 @@ function ThumbnailGenerationStep({
             {state.thumbnailGenerationTime !== null ? (
               <span className="text-xs text-zinc-500">
                 Generated in {(state.thumbnailGenerationTime / 1000).toFixed(1)}s
+                {isPersisted && (
+                  <span className="ml-2 text-emerald-400">Saved</span>
+                )}
               </span>
             ) : (
               <span className="text-xs text-zinc-500">Generation complete</span>

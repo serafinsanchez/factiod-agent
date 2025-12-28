@@ -33,7 +33,8 @@ export function ThumbnailGenerationStep({
     state.thumbnailImage?.mimeType && state.thumbnailImage?.data
       ? `data:${state.thumbnailImage.mimeType};base64,${state.thumbnailImage.data}`
       : undefined;
-  const thumbnailSrc = inlineThumbnailSrc ?? state.thumbnailImage?.url ?? undefined;
+  const thumbnailSrc =
+    inlineThumbnailSrc ?? state.thumbnailImage?.url ?? undefined;
   const promptReady = Boolean(state.pipeline.thumbnailPrompt?.trim());
   const stepState = state.pipeline.steps[stepConfig.id];
   const status = stepState?.status ?? "idle";
@@ -57,6 +58,13 @@ export function ThumbnailGenerationStep({
   const buttonDisabled = isRunning || !promptReady;
   const errorMessage = stepState?.errorMessage ?? state.thumbnailError;
 
+  // Persistence status
+  const thumbnailImage = state.thumbnailImage;
+  const hasThumbnail = Boolean(thumbnailSrc);
+  const isPersisted = thumbnailImage?.persisted === true;
+  const warnings = thumbnailImage?.warnings;
+  const showNotSavedWarning = hasThumbnail && !isPersisted && status === "success";
+
   return (
     <div className="space-y-4 rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -69,7 +77,9 @@ export function ThumbnailGenerationStep({
           </p>
         </div>
         <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
-          <span className={`text-[0.6rem] font-semibold uppercase tracking-[0.3em] ${statusToneClasses}`}>
+          <span
+            className={`text-[0.6rem] font-semibold uppercase tracking-[0.3em] ${statusToneClasses}`}
+          >
             {statusLabel}
           </span>
           <Button
@@ -105,14 +115,27 @@ export function ThumbnailGenerationStep({
 
       {thumbnailSrc ? (
         <div className="space-y-4">
+          {/* "Not saved" warning banner */}
+          {showNotSavedWarning && (
+            <ThumbnailNotSavedWarning warnings={warnings} />
+          )}
+
           <div className="overflow-hidden rounded-2xl border border-zinc-900">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={thumbnailSrc} alt="Generated thumbnail" className="w-full" />
+            <img
+              src={thumbnailSrc}
+              alt="Generated thumbnail"
+              className="w-full"
+            />
           </div>
           <div className="flex items-center justify-between">
             {state.thumbnailGenerationTime !== null ? (
               <span className="text-xs text-zinc-500">
-                Generated in {(state.thumbnailGenerationTime / 1000).toFixed(1)}s
+                Generated in{" "}
+                {(state.thumbnailGenerationTime / 1000).toFixed(1)}s
+                {isPersisted && (
+                  <span className="ml-2 text-emerald-400">Saved</span>
+                )}
               </span>
             ) : (
               <span className="text-xs text-zinc-500">Generation complete</span>
@@ -130,8 +153,43 @@ export function ThumbnailGenerationStep({
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-zinc-800/60 bg-zinc-950/40 p-4 text-sm text-zinc-400">
-          Run this step to render the thumbnail frame once your prompt looks good.
+          Run this step to render the thumbnail frame once your prompt looks
+          good.
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Warning banner shown when thumbnail was rendered but not saved to storage.
+ */
+function ThumbnailNotSavedWarning({
+  warnings,
+}: {
+  warnings?: Array<{ code: string; message: string }>;
+}) {
+  // Show top 2 most relevant warnings
+  const displayWarnings = warnings?.slice(0, 2) ?? [];
+
+  return (
+    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
+      <p className="font-medium text-amber-100">
+        Rendered, but not saved to storage
+      </p>
+      <p className="mt-1 text-amber-200/80">
+        This thumbnail won&apos;t persist after you refresh the page. Re-generate
+        after fixing the issue below, or download it now.
+      </p>
+      {displayWarnings.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {displayWarnings.map((w, i) => (
+            <li key={i} className="text-xs text-amber-200/70">
+              <span className="font-mono text-amber-300">[{w.code}]</span>{" "}
+              {w.message}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -178,15 +236,26 @@ function ThumbnailMetricsPanel({
     : hasActualMetrics
       ? [
           { label: "Input tokens", value: formatTokens(metrics?.inputTokens) },
-          { label: "Output tokens", value: formatTokens(metrics?.outputTokens) },
+          {
+            label: "Output tokens",
+            value: formatTokens(metrics?.outputTokens),
+          },
           { label: "Total tokens", value: formatTokens(metrics?.totalTokens) },
-          { label: "Cost (USD)", value: formatCost(metrics?.costUsd), accent: true },
+          {
+            label: "Cost (USD)",
+            value: formatCost(metrics?.costUsd),
+            accent: true,
+          },
         ]
       : [
           { label: "Input tokens", value: GEMINI_THUMBNAIL_TOKEN_RANGE_TEXT },
           { label: "Output tokens", value: "Image data (n/a)" },
           { label: "Total tokens", value: GEMINI_THUMBNAIL_TOKEN_RANGE_TEXT },
-          { label: "Est. cost (USD)", value: GEMINI_THUMBNAIL_COST_RANGE_TEXT, accent: true },
+          {
+            label: "Est. cost (USD)",
+            value: GEMINI_THUMBNAIL_COST_RANGE_TEXT,
+            accent: true,
+          },
         ];
 
   const gridTiles: MetricTileDescriptor[] = [
@@ -195,7 +264,7 @@ function ThumbnailMetricsPanel({
   ];
 
   const noteText = isSeedream
-    ? "SeeDream v4 is billed via FAL.ai. Token usage and per-run cost aren’t surfaced in this UI yet."
+    ? "SeeDream v4 is billed via FAL.ai. Token usage and per-run cost aren't surfaced in this UI yet."
     : hasActualMetrics
       ? `Gemini bills image tokens at ${GEMINI_THUMBNAIL_PRICE_TEXT}. Values above reflect this run.`
       : `Gemini bills image tokens at ${GEMINI_THUMBNAIL_PRICE_TEXT}. Showing the typical range until we can read billing metadata from the API.`;
@@ -210,7 +279,9 @@ function ThumbnailMetricsPanel({
           <div
             key={`${tile.label}-${tile.value}`}
             className={`rounded-2xl border p-4 ${
-              tile.accent ? "border-white/30 bg-white/10 text-white" : "border-zinc-900 bg-zinc-950/70"
+              tile.accent
+                ? "border-white/30 bg-white/10 text-white"
+                : "border-zinc-900 bg-zinc-950/70"
             }`}
           >
             <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">

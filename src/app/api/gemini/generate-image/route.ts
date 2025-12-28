@@ -2,72 +2,35 @@ import { randomUUID } from "crypto";
 
 import { GoogleGenAI } from "@google/genai";
 
-import { getSupabaseServerClient } from "@/lib/supabase/server";
-import {
-  PROJECTS_BUCKET,
-  buildProjectThumbnailPath,
-} from "@/lib/projects";
+import { buildProjectThumbnailPath, getPublicProjectFileUrl } from "@/lib/projects";
 import { TOKENS_PER_MILLION } from "@/lib/llm/costs";
-import { buildGeminiImagePrompt as buildGeminiImagePromptForKids, getVisualStylePreset } from "@/prompts";
+import {
+  buildGeminiImagePrompt as buildGeminiImagePromptForKids,
+  getVisualStylePreset,
+} from "@/prompts";
 import { buildGeminiImagePrompt as buildGeminiImagePromptForEveryone } from "@/prompts/everyone/gemini-image.prompt";
 import type { AudienceMode, VisualStyleId } from "@/types/agent";
+import {
+  uploadThumbnailToStorage,
+  canConstructPublicUrl,
+  createPublicUrlUnavailableWarning,
+} from "@/lib/thumbnail/upload";
+import type {
+  ThumbnailGenerationSuccess,
+  ThumbnailGenerationError,
+  ThumbnailWarning,
+} from "@/lib/thumbnail/types";
 
 const GEMINI_IMAGE_PRICE_PER_MILLION = 20;
 
-function extractTextOverlayFromCreativeBrief(creativeBrief: unknown): string | null {
-  if (typeof creativeBrief !== "string") return null;
-
-  // Prefer quoted text (straight quotes or curly quotes).
-  const quotedMatch = creativeBrief.match(
-    /Text Overlay:\s*["\u201C\u201D]([^"\u201C\u201D\n]+)["\u201C\u201D]/i,
-  );
-  const quoted = quotedMatch?.[1]?.trim();
-  if (quoted) return quoted;
-
-  // Fallback: locate the Text Overlay line and apply a few safe heuristics.
-  const lineMatch = creativeBrief.match(/^Text Overlay:\s*(.+)$/im);
-  const remainder = lineMatch?.[1]?.trim();
-  if (!remainder) return null;
-
-  const quoteLike = remainder[0];
-  if (quoteLike === `"` || quoteLike === "\u201C" || quoteLike === "\u201D") {
-    const rest = remainder.slice(1);
-    const endIdx = rest.search(/["\u201C\u201D]/);
-    const extracted = (endIdx >= 0 ? rest.slice(0, endIdx) : rest).trim();
-    return extracted.length > 0 ? extracted : null;
-  }
-
-  // Common unquoted format: `Text Overlay: Lunar Rover Secrets in upper-left corner ...`
-  const stopMatchers: RegExp[] = [
-    /\s+in\s+the\s+upper-left\b/i,
-    /\s+in\s+upper-left\b/i,
-    /\s+upper-left\b/i,
-    /\s+in\s+the\s+top-left\b/i,
-    /\s+in\s+top-left\b/i,
-    /\s+top-left\b/i,
-  ];
-  let candidate = remainder;
-  for (const re of stopMatchers) {
-    const idx = candidate.search(re);
-    if (idx > 0) {
-      candidate = candidate.slice(0, idx);
-      break;
-    }
-  }
-
-  // If the remainder still contains long style guidance, trim at common separators.
-  candidate = candidate.split(/[;,—-]/)[0] ?? candidate;
-
-  candidate = candidate.trim().replace(/[.]+$/, "").trim();
-  return candidate.length > 0 ? candidate : null;
-}
-
 export async function POST(request: Request) {
+  const variationTag = randomUUID();
+
   try {
-    const { 
-      prompt, 
-      projectSlug, 
-      thumbnailPath: providedThumbnailPath, 
+    const {
+      prompt,
+      projectSlug,
+      thumbnailPath: providedThumbnailPath,
       skipTextOverlay,
       referenceImage, // Optional base64 character reference image for consistency
       styleId, // Optional visual style ID for style-specific image generation
@@ -75,20 +38,26 @@ export async function POST(request: Request) {
     } = await request.json();
 
     if (!prompt || typeof prompt !== "string") {
-      return Response.json({ error: "Prompt is required" }, { status: 400 });
+      const errorResponse: ThumbnailGenerationError = {
+        error: "Prompt is required",
+        provider: "gemini",
+        debug: { variationTag },
+      };
+      return Response.json(errorResponse, { status: 400 });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return Response.json(
-        { error: "GEMINI_API_KEY is not set" },
-        { status: 500 },
-      );
+      const errorResponse: ThumbnailGenerationError = {
+        error: "GEMINI_API_KEY is not set",
+        code: "MISSING_API_KEY",
+        provider: "gemini",
+        debug: { variationTag },
+      };
+      return Response.json(errorResponse, { status: 500 });
     }
 
     const ai = new GoogleGenAI({ apiKey });
-
-    const variationTag = randomUUID();
 
     // Get visual style preset for scene images
     const visualStyle = getVisualStylePreset(styleId as VisualStyleId | undefined);
@@ -159,23 +128,23 @@ export async function POST(request: Request) {
       // Check for error finish reasons (SAFETY, RECITATION, etc.)
       // STOP is the normal completion status, not an error
       if (candidate?.finishReason && candidate.finishReason !== "STOP") {
-        return Response.json(
-          {
-            error: `Generation blocked with reason: ${candidate.finishReason}`,
-            details: response,
-          },
-          { status: 500 },
-        );
+        const errorResponse: ThumbnailGenerationError = {
+          error: `Generation blocked with reason: ${candidate.finishReason}`,
+          code: `BLOCKED_${candidate.finishReason}`,
+          provider: "gemini",
+          debug: { variationTag },
+        };
+        return Response.json(errorResponse, { status: 500 });
       }
 
-      return Response.json(
-        {
-          error:
-            "No image data found in response. The model may have returned only text.",
-          details: response,
-        },
-        { status: 500 },
-      );
+      const errorResponse: ThumbnailGenerationError = {
+        error:
+          "No image data found in response. The model may have returned only text.",
+        code: "NO_IMAGE_DATA",
+        provider: "gemini",
+        debug: { variationTag },
+      };
+      return Response.json(errorResponse, { status: 500 });
     }
 
     const imageBase64 = imagePart.inlineData.data;
@@ -183,66 +152,49 @@ export async function POST(request: Request) {
 
     // Type guard: ensure imageBase64 is a string
     if (!imageBase64 || typeof imageBase64 !== "string") {
-      return Response.json(
-        {
-          error: "Invalid image data received from Gemini",
-        },
-        { status: 500 },
-      );
+      const errorResponse: ThumbnailGenerationError = {
+        error: "Invalid image data received from Gemini",
+        code: "INVALID_IMAGE_DATA",
+        provider: "gemini",
+        debug: { variationTag },
+      };
+      return Response.json(errorResponse, { status: 500 });
     }
 
+    // =========================================================================
+    // Upload to Supabase storage (best-effort)
+    // =========================================================================
+    const warnings: ThumbnailWarning[] = [];
+    let persisted = false;
     let thumbnailPath: string | undefined;
+    let thumbnailUrl: string | undefined;
 
     if (typeof projectSlug === "string" && projectSlug.trim().length > 0) {
       const slug = projectSlug.trim();
       const path =
-        typeof providedThumbnailPath === "string" && providedThumbnailPath.trim().length > 0
+        typeof providedThumbnailPath === "string" &&
+        providedThumbnailPath.trim().length > 0
           ? providedThumbnailPath.trim()
           : buildProjectThumbnailPath(slug, { unique: true });
 
-      try {
-        const supabase = getSupabaseServerClient();
-        const binary = Buffer.from(imageBase64, "base64");
-        const { error: uploadError } = await supabase.storage
-          .from(PROJECTS_BUCKET)
-          .upload(path, binary, {
-            contentType: mimeType,
-            upsert: true,
-          });
+      const binary = Buffer.from(imageBase64, "base64");
+      const uploadResult = await uploadThumbnailToStorage({
+        binary,
+        path,
+        contentType: mimeType,
+      });
 
-        if (uploadError) {
-          console.error("Supabase thumbnail upload error:", uploadError);
+      persisted = uploadResult.persisted;
+      thumbnailPath = uploadResult.thumbnailPath;
+      warnings.push(...uploadResult.warnings);
 
-          // Provide helpful guidance for common storage errors
-          const statusCode =
-            typeof uploadError === "object" &&
-            uploadError !== null &&
-            "statusCode" in uploadError
-              ? String(
-                  (uploadError as { statusCode?: string | number })?.statusCode,
-                )
-              : undefined;
-
-          if (
-            statusCode === "404" ||
-            uploadError.message?.includes("Bucket not found")
-          ) {
-            console.error(
-              "\n⚠️  STORAGE SETUP REQUIRED:\n" +
-                "The 'projects' storage bucket doesn't exist in Supabase.\n" +
-                "Please run the migration: supabase/migrations/002_create_storage_bucket.sql\n" +
-                "OR manually create the bucket in Supabase Dashboard → Storage → New bucket → Name: 'projects' (public)\n" +
-                "See README.md for detailed setup instructions.\n",
-            );
-          }
+      // Construct public URL if persisted
+      if (persisted && thumbnailPath) {
+        if (canConstructPublicUrl()) {
+          thumbnailUrl = getPublicProjectFileUrl(thumbnailPath) ?? undefined;
         } else {
-          thumbnailPath = path;
+          warnings.push(createPublicUrlUnavailableWarning());
         }
-      } catch (storageError) {
-        console.error(
-          "Supabase configuration/storage error while uploading thumbnail:",
-          storageError,
-        );
       }
     } else {
       console.warn(
@@ -250,6 +202,9 @@ export async function POST(request: Request) {
       );
     }
 
+    // =========================================================================
+    // Compute usage and cost
+    // =========================================================================
     const usageMetadata = response.usageMetadata;
     const usage = {
       promptTokens:
@@ -272,27 +227,39 @@ export async function POST(request: Request) {
     const totalTokens = usage?.totalTokens ?? null;
     const costUsd =
       typeof totalTokens === "number"
-        ? Number(((totalTokens / TOKENS_PER_MILLION) * GEMINI_IMAGE_PRICE_PER_MILLION).toFixed(6))
+        ? Number(
+            ((totalTokens / TOKENS_PER_MILLION) * GEMINI_IMAGE_PRICE_PER_MILLION).toFixed(
+              6,
+            ),
+          )
         : null;
 
-    return Response.json({
+    // =========================================================================
+    // Build unified success response
+    // =========================================================================
+    const successResponse: ThumbnailGenerationSuccess = {
+      provider: "gemini",
       imageBase64,
       mimeType,
       thumbnailPath,
+      thumbnailUrl,
+      persisted,
+      warnings: warnings.length > 0 ? warnings : undefined,
+      debug: { variationTag },
       usage,
       costUsd,
-    });
+    };
+
+    return Response.json(successResponse);
   } catch (error) {
     console.error("Gemini image generation error:", error);
-    return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to generate image",
-        details: error,
-      },
-      { status: 500 },
-    );
+
+    const errorResponse: ThumbnailGenerationError = {
+      error: error instanceof Error ? error.message : "Failed to generate image",
+      provider: "gemini",
+      debug: { variationTag },
+    };
+
+    return Response.json(errorResponse, { status: 500 });
   }
 }

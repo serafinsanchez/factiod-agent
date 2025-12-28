@@ -1,8 +1,18 @@
 import type { VisualStylePreset } from './visual-styles';
+import { extractTextOverlay } from '../lib/thumbnail/creative-brief';
 
 type GeminiContentPart =
   | { text: string }
   | { inlineData: { mimeType: string; data: string } };
+
+/**
+ * Extracts the Negative Prompts line from a creative brief.
+ */
+function extractNegativeLine(creativeBrief: string): string | null {
+  if (typeof creativeBrief !== "string") return null;
+  const match = creativeBrief.match(/Negative Prompts:\s*(.+)\s*$/im);
+  return match?.[1] ?? null;
+}
 
 export function buildGeminiImagePrompt({
   creativeBrief,
@@ -17,17 +27,10 @@ export function buildGeminiImagePrompt({
   referenceImage?: string;
   variationTag: string;
 }): { structuredPrompt: string; contentParts: GeminiContentPart[] } {
-  // Match straight quotes, curly quotes, or unquoted text after "Text Overlay:"
-  const overlayMatch = typeof creativeBrief === "string"
-    ? creativeBrief.match(/Text Overlay:\s*["""\u201C\u201D]?([^"""\u201C\u201D\n]+)["""\u201C\u201D]?/i)
-    : null;
-  const negativeLineMatch = typeof creativeBrief === "string"
-    ? creativeBrief.match(/Negative Prompts:\s*(.+)\s*$/im)
-    : null;
-  const extractedOverlay = overlayMatch?.[1] ?? null;
-  const negativeLine = negativeLineMatch?.[1] ?? null;
-  const overlayText = typeof extractedOverlay === "string" ? extractedOverlay.trim() : "";
+  // Use the shared overlay extraction utility
+  const overlayText = extractTextOverlay(creativeBrief) ?? "";
   const hasOverlayText = overlayText.length > 0;
+  const negativeLine = extractNegativeLine(creativeBrief);
 
   // Build the main instruction block.
   const promptLines: string[] = skipTextOverlay

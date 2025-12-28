@@ -23,6 +23,12 @@ export type ThumbnailImage = {
   data?: string;
   mimeType?: string;
   url?: string;
+  /** Whether the thumbnail was persisted to Supabase storage */
+  persisted?: boolean;
+  /** Non-fatal warnings from the thumbnail generation API */
+  warnings?: Array<{ code: string; message: string }>;
+  /** Debug info (provider, requestId, etc.) */
+  debug?: { requestId?: string | null; variationTag?: string };
 } | null;
 
 export type ThumbnailMetrics = {

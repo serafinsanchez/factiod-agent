@@ -10,12 +10,29 @@ export function buildProjectAudioPath(projectSlug: string): string {
   return `${projectSlug}/${projectSlug}-audio.mp3`;
 }
 
+/**
+ * Generates a short random ID for unique file paths.
+ * Uses crypto.randomUUID() when available, falls back to timestamp + random.
+ */
+function generateUniqueId(): string {
+  // Use crypto.randomUUID() if available (Node.js 19+, modern browsers)
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    // Use first 8 chars of UUID for brevity (still ~4 billion combinations)
+    return crypto.randomUUID().slice(0, 8);
+  }
+  // Fallback: timestamp + random chars
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 6);
+  return `${timestamp}-${random}`;
+}
+
 export function buildProjectThumbnailPath(
   projectSlug: string,
   options?: { unique?: boolean },
 ): string {
   if (options?.unique) {
-    return `${projectSlug}/${projectSlug}-thumbnail-${Date.now()}.png`;
+    const uniqueId = generateUniqueId();
+    return `${projectSlug}/${projectSlug}-thumbnail-${uniqueId}.png`;
   }
   return `${projectSlug}/${projectSlug}-thumbnail.png`;
 }
@@ -42,5 +59,3 @@ export function getPublicProjectFileUrl(
   const encodedPath = encodeURI(path);
   return `${PUBLIC_SUPABASE_URL}/storage/v1/object/public/${PROJECTS_BUCKET}/${encodedPath}`;
 }
-
-

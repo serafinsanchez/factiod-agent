@@ -2,7 +2,11 @@
 
 import { useCallback, useState } from "react";
 import type { PipelineState, StepRunMetrics } from "@/types/agent";
-import { getOrCreateProjectSlug, buildProjectThumbnailPath, getPublicProjectFileUrl } from "@/lib/projects";
+import {
+  getOrCreateProjectSlug,
+  buildProjectThumbnailPath,
+  getPublicProjectFileUrl,
+} from "@/lib/projects";
 import { slugifyTopic } from "@/lib/slug";
 import { useSettings } from "@/hooks/use-settings";
 import {
@@ -13,6 +17,11 @@ import {
   ensureStepState,
   getAccumulatedSessionTotals,
 } from "./pipeline-types";
+import {
+  parseThumbnailResponse,
+  hasRenderableOutput,
+  safeParseJsonResponse,
+} from "@/lib/thumbnail/types";
 
 type UseThumbnailGenerationOptions = {
   pipeline: PipelineState;
@@ -31,9 +40,12 @@ export function useThumbnailGeneration({
 
   const [isGeneratingThumbnail, setIsGeneratingThumbnail] = useState(false);
   const [thumbnailImage, setThumbnailImage] = useState<ThumbnailImage>(null);
-  const [thumbnailGenerationTime, setThumbnailGenerationTime] = useState<number | null>(null);
+  const [thumbnailGenerationTime, setThumbnailGenerationTime] = useState<
+    number | null
+  >(null);
   const [thumbnailError, setThumbnailError] = useState<string | null>(null);
-  const [thumbnailMetrics, setThumbnailMetrics] = useState<ThumbnailMetrics>(null);
+  const [thumbnailMetrics, setThumbnailMetrics] =
+    useState<ThumbnailMetrics>(null);
 
   const generateThumbnail = useCallback(async () => {
     // Read from pipelineRef.current to get the latest state.
@@ -64,8 +76,13 @@ export function useThumbnailGeneration({
       return;
     }
 
-    const projectSlug = getOrCreateProjectSlug(currentPipeline.projectSlug, currentPipeline.topic);
-    const thumbnailPath = buildProjectThumbnailPath(projectSlug, { unique: true });
+    const projectSlug = getOrCreateProjectSlug(
+      currentPipeline.projectSlug,
+      currentPipeline.topic,
+    );
+    const thumbnailPath = buildProjectThumbnailPath(projectSlug, {
+      unique: true,
+    });
 
     setIsGeneratingThumbnail(true);
     setThumbnailError(null);
@@ -95,7 +112,10 @@ export function useThumbnailGeneration({
     const startTime = performance.now();
 
     try {
-      const thumbnailModel = publishingSettings.data?.thumbnailModel ?? "nano_banana_pro";
+      const thumbnailModel =
+        publishingSettings.data?.thumbnailModel ?? "nano_banana_pro";
+      const provider: "gemini" | "fal" =
+        thumbnailModel === "seedream_v4" ? "fal" : "gemini";
       const endpoint =
         thumbnailModel === "seedream_v4"
           ? "/api/fal/seedream/generate-image"
@@ -112,35 +132,81 @@ export function useThumbnailGeneration({
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to generate thumbnail");
+      // =====================================================================
+      // Parse response with safe JSON fallback
+      // =====================================================================
+      const parseResult = await safeParseJsonResponse(res);
+
+      if ("textFallback" in parseResult) {
+        // Response was not valid JSON
+        throw new Error(
+          `Thumbnail generation failed (HTTP ${res.status}): ${parseResult.textFallback}`,
+        );
       }
 
-      const data = await res.json();
-      const storagePath: string | undefined = data.thumbnailPath;
-      const publicUrl =
-        typeof storagePath === "string"
-          ? getPublicProjectFileUrl(storagePath)
-          : data.thumbnailUrl;
-      const versionedUrl = createCacheBustedUrl(publicUrl);
-      const durationMs = performance.now() - startTime;
-      const usage = data.usage;
-      const usageInputTokens =
-        typeof usage?.promptTokens === "number" ? usage.promptTokens : null;
-      const usageOutputTokens =
-        typeof usage?.outputTokens === "number" ? usage.outputTokens : null;
-      const usageTotalTokens =
-        typeof usage?.totalTokens === "number" ? usage.totalTokens : null;
-      const reportedCostUsd =
-        typeof data.costUsd === "number" ? data.costUsd : null;
+      const rawData = parseResult.data;
 
+      // Check for error responses
+      if (!res.ok || typeof rawData.error === "string") {
+        const errorMessage =
+          typeof rawData.error === "string"
+            ? rawData.error
+            : `Thumbnail generation failed (HTTP ${res.status})`;
+        throw new Error(errorMessage);
+      }
+
+      // =====================================================================
+      // Parse into unified response shape (handles both new and legacy)
+      // =====================================================================
+      const parsed = parseThumbnailResponse(rawData, provider);
+
+      // =====================================================================
+      // SUCCESS GUARD: Require renderable output
+      // =====================================================================
+      if (!hasRenderableOutput(parsed)) {
+        throw new Error(
+          "No thumbnail image was returned. The upload may have failed and no fallback URL is available.",
+        );
+      }
+
+      // =====================================================================
+      // Compute display URL (prefer Supabase URL, fall back to provider URL)
+      // =====================================================================
+      let displayUrl: string | undefined;
+
+      if (parsed.thumbnailPath) {
+        // Try to construct Supabase public URL
+        const publicUrl = getPublicProjectFileUrl(parsed.thumbnailPath);
+        if (publicUrl) {
+          displayUrl = createCacheBustedUrl(publicUrl) ?? undefined;
+        }
+      }
+
+      if (!displayUrl && parsed.thumbnailUrl) {
+        // Use the URL from the API response (may be Supabase or provider URL)
+        displayUrl = createCacheBustedUrl(parsed.thumbnailUrl) ?? undefined;
+      }
+
+      const durationMs = performance.now() - startTime;
+
+      // =====================================================================
+      // Update thumbnail image state with persistence info
+      // =====================================================================
       setThumbnailImage({
-        data: data.imageBase64,
-        mimeType: data.mimeType,
-        url: versionedUrl ?? undefined,
+        data: parsed.imageBase64,
+        mimeType: parsed.mimeType,
+        url: displayUrl,
+        persisted: parsed.persisted,
+        warnings: parsed.warnings,
+        debug: parsed.debug,
       });
       setThumbnailGenerationTime(durationMs);
+
+      const usageInputTokens = parsed.usage?.promptTokens ?? null;
+      const usageOutputTokens = parsed.usage?.outputTokens ?? null;
+      const usageTotalTokens = parsed.usage?.totalTokens ?? null;
+      const reportedCostUsd = parsed.costUsd ?? null;
+
       setThumbnailMetrics({
         inputTokens: usageInputTokens,
         outputTokens: usageOutputTokens,
@@ -148,6 +214,9 @@ export function useThumbnailGeneration({
         costUsd: reportedCostUsd,
       });
 
+      // =====================================================================
+      // Update pipeline state
+      // =====================================================================
       // IMPORTANT: Update pipelineRef.current BEFORE queueAutoSave() runs.
       // queueAutoSave reads pipelineRef.current; if we only update it inside a
       // React state updater, React may batch/defer execution and we can race.
@@ -165,7 +234,7 @@ export function useThumbnailGeneration({
         thumbnailGenerate: {
           ...ensureStepState(basePipeline.steps, "thumbnailGenerate"),
           resolvedPrompt: prompt,
-          responseText: versionedUrl ?? data.thumbnailPath ?? "",
+          responseText: displayUrl ?? parsed.thumbnailPath ?? "",
           status: "success" as const,
           metrics: thumbnailStepMetrics,
           errorMessage: undefined,
@@ -188,9 +257,10 @@ export function useThumbnailGeneration({
         cumulativeCostUsd: sessionTotals.cumulativeCostUsd,
       };
 
-      // Only overwrite thumbnailPath if we successfully uploaded to storage.
-      if (typeof storagePath === "string" && storagePath.trim().length > 0) {
-        nextPipeline.thumbnailPath = storagePath;
+      // Only overwrite thumbnailPath if we successfully persisted to storage.
+      // This prevents storing temporary provider URLs as permanent paths.
+      if (parsed.persisted && typeof parsed.thumbnailPath === "string") {
+        nextPipeline.thumbnailPath = parsed.thumbnailPath;
       }
 
       pipelineRef.current = nextPipeline;
@@ -219,12 +289,7 @@ export function useThumbnailGeneration({
     } finally {
       setIsGeneratingThumbnail(false);
     }
-  }, [
-    pipelineRef,
-    publishingSettings.data?.thumbnailModel,
-    setPipeline,
-    queueAutoSave,
-  ]);
+  }, [pipelineRef, publishingSettings.data?.thumbnailModel, setPipeline, queueAutoSave]);
 
   const downloadThumbnail = useCallback(async () => {
     if (!thumbnailImage) {
@@ -255,7 +320,9 @@ export function useThumbnailGeneration({
       try {
         const response = await fetch(thumbnailImage.url, { mode: "cors" });
         if (!response.ok) {
-          throw new Error(`Failed to fetch thumbnail (status ${response.status})`);
+          throw new Error(
+            `Failed to fetch thumbnail (status ${response.status})`,
+          );
         }
         const blob = await response.blob();
         const objectUrl = URL.createObjectURL(blob);
@@ -263,6 +330,10 @@ export function useThumbnailGeneration({
         setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
       } catch (error) {
         console.error("Thumbnail download error:", error);
+        // Fallback: open in new tab for manual download
+        if (thumbnailImage.url) {
+          window.open(thumbnailImage.url, "_blank");
+        }
       }
     }
   }, [pipeline.topic, thumbnailImage]);
