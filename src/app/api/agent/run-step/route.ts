@@ -8,6 +8,10 @@ import type { ModelId, StepId, AudienceMode } from '../../../../../types/agent';
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { getDefaultSettings } from '@/lib/settings/defaults';
 import type { ScriptAudioSettings } from '@/lib/settings/types';
+import {
+  validateThumbnailCreativeBrief,
+  repairCreativeBrief,
+} from '@/lib/thumbnail/creative-brief';
 
 type RunStepRequestBody = {
   stepId: StepId;
@@ -598,6 +602,13 @@ export async function POST(request: Request) {
     const { stepId, model, topic, promptTemplateOverride, audienceMode } = parsed;
     let { variables } = parsed;
 
+    // Topic is always available from the request body, so ensure it's in variables.
+    // This is needed for validation and interpolation.
+    variables = {
+      ...variables,
+      Topic: topic,
+    };
+
     // Enforce settings-backed script length on the server so all clients/audiences behave consistently.
     if (stepId === 'script' || stepId === 'scriptQA') {
       const effectiveWordCount = await getSettingsDefaultWordCount();
@@ -669,10 +680,33 @@ export async function POST(request: Request) {
       promptTemplateOverride,
     });
 
-    if (stepId === 'thumbnail') {
-    }
-
     let finalResponseText = responseText;
+
+    // Validate and optionally repair thumbnail creative brief
+    if (stepId === 'thumbnail') {
+      // First, try to repair common issues (blank lines, whitespace)
+      const repairedBrief = repairCreativeBrief(finalResponseText);
+
+      // Validate the repaired brief
+      const validation = validateThumbnailCreativeBrief(repairedBrief);
+
+      if (!validation.ok) {
+        return NextResponse.json(
+          {
+            error: `Invalid thumbnail creative brief: ${validation.error}`,
+            hint: 'The thumbnail prompt must be exactly 7 lines with specific labels. ' +
+              'Try regenerating the thumbnail prompt step.',
+          },
+          { status: 422 },
+        );
+      }
+
+      // Use the repaired version if it's different
+      if (repairedBrief !== finalResponseText) {
+        console.log('[API] Thumbnail creative brief was repaired (removed blank lines or whitespace)');
+        finalResponseText = repairedBrief;
+      }
+    }
 
     if (needsHighTokenLimit) {
       const llmDuration = Date.now() - llmStartTime;
