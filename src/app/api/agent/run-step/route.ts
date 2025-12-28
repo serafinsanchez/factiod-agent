@@ -477,6 +477,35 @@ function isStepId(value: unknown): value is StepId {
   return typeof value === 'string' && SERVER_STEP_IDS.has(value as StepId);
 }
 
+/**
+ * Validates that all required input variables for a step are present and non-empty.
+ * Returns an error object if validation fails, or { ok: true } if all required vars are present.
+ */
+function validateRequiredInputVars(
+  step: { inputVars: string[]; label: string },
+  variables: Record<string, string>,
+): { ok: true } | { ok: false; error: string; missingVars: string[] } {
+  const missingVars: string[] = [];
+
+  for (const varName of step.inputVars) {
+    const value = variables[varName];
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      missingVars.push(varName);
+    }
+  }
+
+  if (missingVars.length > 0) {
+    const varList = missingVars.map((v) => `[${v}]`).join(', ');
+    return {
+      ok: false,
+      error: `${step.label} requires the following variable(s) to be provided: ${varList}. Run the prerequisite step(s) first.`,
+      missingVars,
+    };
+  }
+
+  return { ok: true };
+}
+
 function normalizeVariables(
   variables: unknown,
 ): Record<string, string> | undefined {
@@ -579,6 +608,19 @@ export async function POST(request: Request) {
     }
 
     const step = getStepConfigForAudience(stepId, audienceMode);
+
+    // Validate that all required input variables are present before running.
+    // This provides clear, actionable error messages instead of silent failures.
+    const inputValidation = validateRequiredInputVars(step, variables);
+    if (!inputValidation.ok) {
+      return NextResponse.json(
+        {
+          error: inputValidation.error,
+          missingVars: inputValidation.missingVars,
+        },
+        { status: 400 },
+      );
+    }
 
     // Use the user-selected model (step.defaultModel is only a UI default).
     const effectiveModel = model;

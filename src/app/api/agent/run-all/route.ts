@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { runStep } from '../../../../../lib/agent/runStep';
 import { extractFinalScript, runScriptQaWithWordGoal } from '../../../../../lib/agent/scriptQA';
-import { STEP_CONFIGS } from '../../../../../lib/agent/steps';
+import { STEP_CONFIGS, getStepConfig } from '../../../../../lib/agent/steps';
 import { interpolatePrompt } from '../../../../../lib/agent/interpolate';
 import { normalizeModelId } from '../../../../../lib/llm/models';
 import { toNarrationOnly } from '@/lib/tts/cleanNarration';
@@ -25,7 +25,12 @@ type RunAllRequestBody = {
   defaultWordCount?: number;
 };
 
-const STEP_IDS: StepId[] = [
+/**
+ * The steps executed by the "Run All" endpoint.
+ * This is the video-team workflow: script generation through to metadata.
+ * Audio and thumbnail IMAGE generation are triggered client-side after this returns.
+ */
+const VIDEO_TEAM_STEP_IDS: StepId[] = [
   'keyConcepts',
   'hook',
   'quizzes',
@@ -194,8 +199,8 @@ function insertChecklistBudgetLine(responseText: string, budgetLine: string): st
   return responseText.replace(/^Checklist:\s*$/m, (match) => `${match}\n${budgetLine}`);
 }
 
-function isStepId(value: unknown): value is StepId {
-  return typeof value === 'string' && STEP_IDS.includes(value as StepId);
+function isVideoTeamStepId(value: unknown): value is StepId {
+  return typeof value === 'string' && VIDEO_TEAM_STEP_IDS.includes(value as StepId);
 }
 
 function normalizeOverrides(
@@ -212,7 +217,7 @@ function normalizeOverrides(
   const normalized: Partial<Record<StepId, string>> = {};
 
   for (const [key, value] of Object.entries(overrides)) {
-    if (!isStepId(key)) {
+    if (!isVideoTeamStepId(key)) {
       return { error: `Unknown step in promptTemplateOverrides: ${key}` };
     }
 
@@ -339,7 +344,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
 
-    const { topic, model, promptTemplateOverrides } = parsed;
+    const { topic, model, promptTemplateOverrides, defaultWordCount: requestWordCount } = parsed;
 
     const steps = createInitialStepsState();
     const pipeline: PipelineState = {
@@ -348,21 +353,22 @@ export async function POST(request: Request) {
       model,
       totalTokens: 0,
       totalCostUsd: 0,
-    sessionTotalTokens: 0,
-    sessionTotalCostUsd: 0,
+      sessionTotalTokens: 0,
+      sessionTotalCostUsd: 0,
     };
 
     const variables: Record<string, string> = {
       Topic: topic,
     };
-    const settingsDefaultWordCount = await getSettingsDefaultWordCount();
-    variables.DefaultWordCount = String(settingsDefaultWordCount);
 
-    for (const step of STEP_CONFIGS) {
-      if (step.id === 'narrationAudio') {
-        continue;
-      }
-      const override = promptTemplateOverrides?.[step.id];
+    // Honor request-provided defaultWordCount if valid, otherwise fall back to settings.
+    const effectiveWordCount = requestWordCount ?? (await getSettingsDefaultWordCount());
+    variables.DefaultWordCount = String(effectiveWordCount);
+
+    // Execute only the video-team steps (script + metadata pipeline).
+    for (const stepId of VIDEO_TEAM_STEP_IDS) {
+      const step = getStepConfig(stepId);
+      const override = promptTemplateOverrides?.[stepId];
 
       let stepResult;
 
@@ -379,8 +385,8 @@ export async function POST(request: Request) {
 
         const message = error instanceof Error ? error.message : 'Step failed.';
 
-        steps[step.id] = {
-          id: step.id,
+        steps[stepId] = {
+          id: stepId,
           resolvedPrompt,
           responseText: '',
           status: 'error',
@@ -389,7 +395,7 @@ export async function POST(request: Request) {
         return NextResponse.json(pipeline, { status: 500 });
       }
 
-      const hardCap = settingsDefaultWordCount;
+      const hardCap = effectiveWordCount;
       const targetMax = Math.max(1, hardCap - 100);
       const targetMin = Math.min(
         targetMax,
@@ -397,11 +403,11 @@ export async function POST(request: Request) {
       );
       const budgetLine = `LENGTH_BUDGET: Target ${targetMin}–${targetMax} words; hard cap ${hardCap} words.`;
 
-      steps[step.id] = {
-        id: step.id,
+      steps[stepId] = {
+        id: stepId,
         resolvedPrompt: stepResult.resolvedPrompt,
         responseText:
-          step.id === 'scriptQA'
+          stepId === 'scriptQA'
             ? insertChecklistBudgetLine(stepResult.responseText, budgetLine)
             : stepResult.responseText,
         status: 'success',

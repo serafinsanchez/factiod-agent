@@ -36,7 +36,11 @@ export function useThumbnailGeneration({
   const [thumbnailMetrics, setThumbnailMetrics] = useState<ThumbnailMetrics>(null);
 
   const generateThumbnail = useCallback(async () => {
-    const prompt = pipeline.thumbnailPrompt?.trim();
+    // Read from pipelineRef.current to get the latest state.
+    // This is important when generateThumbnail is called immediately after
+    // runAll updates pipelineRef.current but before React re-renders.
+    const currentPipeline = pipelineRef.current;
+    const prompt = currentPipeline.thumbnailPrompt?.trim();
     if (!prompt) {
       const message = "Create a thumbnail prompt before rendering the image.";
       setThumbnailError(message);
@@ -60,7 +64,7 @@ export function useThumbnailGeneration({
       return;
     }
 
-    const projectSlug = getOrCreateProjectSlug(pipeline.projectSlug, pipeline.topic);
+    const projectSlug = getOrCreateProjectSlug(currentPipeline.projectSlug, currentPipeline.topic);
     const thumbnailPath = buildProjectThumbnailPath(projectSlug, { unique: true });
 
     setIsGeneratingThumbnail(true);
@@ -104,7 +108,7 @@ export function useThumbnailGeneration({
           prompt,
           projectSlug,
           thumbnailPath,
-          audienceMode: pipeline.audienceMode,
+          audienceMode: currentPipeline.audienceMode,
         }),
       });
 
@@ -216,7 +220,6 @@ export function useThumbnailGeneration({
       setIsGeneratingThumbnail(false);
     }
   }, [
-    pipeline,
     pipelineRef,
     publishingSettings.data?.thumbnailModel,
     setPipeline,

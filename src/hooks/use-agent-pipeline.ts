@@ -1237,36 +1237,56 @@ export function useAgentPipeline() {
         body: JSON.stringify(body),
       });
 
-      const data = await response.json();
-      if (isPipelineState(data)) {
-        setPipeline((prev) =>
-          ensureCumulativeTotals(
-            ensureSessionTotals({
-              ...prev,
-              ...data,
-              id: data.id ?? prev.id,
-              projectSlug: data.projectSlug ?? prev.projectSlug,
-              characterReferenceImage: prev.characterReferenceImage || data.characterReferenceImage,
-              narrationModelId: normalizeNarrationModelId(
-                data.narrationModelId ?? prev.narrationModelId,
-              ),
-            }),
-          ),
-        );
+      const data = await response.json().catch(() => ({}));
 
-        const nextNarrationScript =
-          typeof data.narrationScript === "string" && data.narrationScript.trim().length > 0
-            ? data.narrationScript
-            : undefined;
-        if (nextNarrationScript) {
-          await narrationAudio.runNarrationAudioStep(nextNarrationScript);
-        }
-        return;
-      }
       if (!response.ok) {
         throw new Error(
           (typeof data?.error === "string" && data.error) || "Failed to run all steps."
         );
+      }
+
+      if (isPipelineState(data)) {
+        // Build the merged pipeline state BEFORE updating React state.
+        // This ensures pipelineRef.current is correct when follow-on steps
+        // (audio, thumbnail) read from it.
+        const basePipeline = pipelineRef.current;
+        const nextPipeline = ensureCumulativeTotals(
+          ensureSessionTotals({
+            ...basePipeline,
+            ...data,
+            id: data.id ?? basePipeline.id,
+            projectSlug: data.projectSlug ?? basePipeline.projectSlug,
+            characterReferenceImage: basePipeline.characterReferenceImage || data.characterReferenceImage,
+            narrationModelId: normalizeNarrationModelId(
+              data.narrationModelId ?? basePipeline.narrationModelId,
+            ),
+          }),
+        );
+
+        // IMPORTANT: Update pipelineRef.current BEFORE triggering follow-on work.
+        // The audio/thumbnail hooks read from pipelineRef.current, so they need
+        // to see the updated state (e.g. narrationAudioTags output, thumbnailPrompt).
+        pipelineRef.current = nextPipeline;
+        setPipeline(nextPipeline);
+
+        // Kick off follow-on video-team outputs (audio + thumbnail image).
+        // Use Promise.allSettled so a failure in one doesn't block the other.
+        const followOnPromises: Promise<void>[] = [];
+
+        const nextNarrationScript = nextPipeline.narrationScript?.trim();
+        if (nextNarrationScript) {
+          followOnPromises.push(narrationAudio.runNarrationAudioStep(nextNarrationScript));
+        }
+
+        const nextThumbnailPrompt = nextPipeline.thumbnailPrompt?.trim();
+        if (nextThumbnailPrompt) {
+          followOnPromises.push(thumbnailGen.generateThumbnail());
+        }
+
+        if (followOnPromises.length > 0) {
+          await Promise.allSettled(followOnPromises);
+        }
+        return;
       }
     } catch (error) {
       const message =
@@ -1285,7 +1305,7 @@ export function useAgentPipeline() {
     } finally {
       setIsRunningAll(false);
     }
-  }, [pipeline, promptOverrides, narrationAudio.runNarrationAudioStep, scriptWordCountCap]);
+  }, [pipeline, promptOverrides, narrationAudio.runNarrationAudioStep, thumbnailGen.generateThumbnail, scriptWordCountCap]);
 
   // ============================================
   // Utility Actions
