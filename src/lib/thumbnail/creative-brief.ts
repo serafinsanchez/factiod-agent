@@ -93,16 +93,10 @@ export function validateThumbnailCreativeBrief(
       };
     }
 
-    // For Text Overlay, check that there's actual content
-    if (expectedLabel === "Text Overlay:") {
-      const content = line.slice(expectedLabel.length).trim();
-      if (content.length === 0) {
-        return {
-          ok: false,
-          error: `Text Overlay line is empty. It should contain a 3-4 word caption.`,
-        };
-      }
-    }
+    // Note: We don't validate Text Overlay content here because:
+    // 1. The LLM may format it in various ways (quoted, unquoted, with placement info)
+    // 2. The image generation will still work with an empty overlay (falls back to generated caption)
+    // 3. The extractTextOverlay function handles various formats gracefully
   }
 
   return { ok: true };
