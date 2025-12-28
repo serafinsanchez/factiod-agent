@@ -12,6 +12,11 @@ import {
   validateThumbnailCreativeBrief,
   repairCreativeBrief,
 } from '@/lib/thumbnail/creative-brief';
+import {
+  getScriptPromptTemplate,
+  DEFAULT_SCRIPT_PROMPT_VERSION,
+  type ScriptPromptVersion,
+} from '@/prompts/script-variants';
 
 type RunStepRequestBody = {
   stepId: StepId;
@@ -33,7 +38,7 @@ type ParsedRunStepRequestBody = {
 
 const SERVER_STEP_IDS = new Set<StepId>(SERVER_EXECUTABLE_STEP_IDS);
 
-async function getSettingsDefaultWordCount(): Promise<number> {
+async function getScriptAudioSettings(): Promise<Partial<ScriptAudioSettings>> {
   try {
     const supabase = getSupabaseServerClient();
     const userId = 'default'; // TODO: Replace with actual user ID when auth is implemented
@@ -46,14 +51,20 @@ async function getSettingsDefaultWordCount(): Promise<number> {
       .single();
 
     if (!error && data?.settings_value) {
-      const saved = data.settings_value as Partial<ScriptAudioSettings>;
-      const candidate = saved.defaultWordCount;
-      if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
-        return Math.round(candidate);
-      }
+      return data.settings_value as Partial<ScriptAudioSettings>;
     }
   } catch {
     // Fall back to defaults below.
+  }
+
+  return getDefaultSettings('scriptAudio') as ScriptAudioSettings;
+}
+
+async function getSettingsDefaultWordCount(): Promise<number> {
+  const settings = await getScriptAudioSettings();
+  const candidate = settings.defaultWordCount;
+  if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+    return Math.round(candidate);
   }
 
   const defaults = getDefaultSettings('scriptAudio') as ScriptAudioSettings;
@@ -61,6 +72,27 @@ async function getSettingsDefaultWordCount(): Promise<number> {
   return typeof fallback === 'number' && Number.isFinite(fallback) && fallback > 0
     ? Math.round(fallback)
     : 1500;
+}
+
+/**
+ * Get the script prompt version for the given audience from settings.
+ */
+async function getScriptPromptVersionFromSettings(audienceMode: AudienceMode): Promise<ScriptPromptVersion> {
+  const settings = await getScriptAudioSettings();
+  
+  if (audienceMode === 'forEveryone') {
+    const version = settings.scriptPromptVersionEveryone;
+    if (version === 'v1' || version === 'v2') {
+      return version;
+    }
+  } else {
+    const version = settings.scriptPromptVersionKids;
+    if (version === 'v1' || version === 'v2') {
+      return version;
+    }
+  }
+  
+  return DEFAULT_SCRIPT_PROMPT_VERSION;
 }
 
 function coercePositiveInt(value: unknown): number | null {
@@ -619,6 +651,14 @@ export async function POST(request: Request) {
     }
 
     const step = getStepConfigForAudience(stepId, audienceMode);
+    
+    // For the script step, apply the Settings-based v1/v2 prompt selection
+    // if no explicit promptTemplateOverride was provided by the client.
+    let effectivePromptTemplateOverride = promptTemplateOverride;
+    if (stepId === 'script' && !promptTemplateOverride) {
+      const scriptVersion = await getScriptPromptVersionFromSettings(audienceMode);
+      effectivePromptTemplateOverride = getScriptPromptTemplate(audienceMode, scriptVersion);
+    }
 
     // Validate that all required input variables are present before running.
     // This provides clear, actionable error messages instead of silent failures.
@@ -677,7 +717,7 @@ export async function POST(request: Request) {
       model: effectiveModel,
       topic,
       variables,
-      promptTemplateOverride,
+      promptTemplateOverride: effectivePromptTemplateOverride,
     });
 
     let finalResponseText = responseText;

@@ -1,4 +1,5 @@
 import type { ModelId, NarrationModelId, VisualStyleId, VideoFrameMode } from "@/types/agent";
+import type { ScriptPromptVersion } from "@/prompts/script-variants";
 import type { VideoModelId, VideoPreset, VideoResolution, VideoAspectRatio, InterpolatorModel } from "@/lib/video/fal-client";
 
 /**
@@ -33,6 +34,10 @@ export interface ScriptAudioSettings {
   promptScript: string;
   promptScriptQA: string;
   promptNarrationAudioTags: string;
+  
+  // Script prompt version selection (v1 vs v2 for A/B testing)
+  scriptPromptVersionKids: ScriptPromptVersion;
+  scriptPromptVersionEveryone: ScriptPromptVersion;
 }
 
 /**

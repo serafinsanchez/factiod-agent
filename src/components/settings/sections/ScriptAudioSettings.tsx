@@ -6,9 +6,14 @@ import { PromptAccordion } from "../PromptAccordion";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
+import { Textarea } from "@/components/ui/textarea";
 import { useSettings } from "@/hooks/use-settings";
 import type { ScriptAudioSettings as ScriptAudioSettingsType } from "@/lib/settings/types";
+import {
+  getScriptPromptTemplate,
+  SCRIPT_PROMPT_VERSION_LABELS,
+  type ScriptPromptVersion,
+} from "@/prompts/script-variants";
 
 export function ScriptAudioSettings() {
   const { data, isLoading, isSaving, save, reset } = useSettings("scriptAudio");
@@ -149,9 +154,76 @@ export function ScriptAudioSettings() {
 
       </div>
 
-      {/* Prompts */}
+      {/* Script Prompt Version Selection */}
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-white">Prompt Templates</h3>
+        <h3 className="text-lg font-semibold text-white">Script Prompt Version</h3>
+        <p className="text-sm text-zinc-400">
+          Choose the script generation prompt version for each audience. Use v2 (retention-optimized) to A/B test new prompts.
+        </p>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="scriptPromptVersionKids">Kids Audience</Label>
+            <Select
+              id="scriptPromptVersionKids"
+              value={settings.scriptPromptVersionKids ?? "v1"}
+              onChange={(e) =>
+                updateField("scriptPromptVersionKids", e.target.value as ScriptPromptVersion)
+              }
+              options={[
+                { value: "v1", label: SCRIPT_PROMPT_VERSION_LABELS.v1 },
+                { value: "v2", label: SCRIPT_PROMPT_VERSION_LABELS.v2 },
+              ]}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="scriptPromptVersionEveryone">Everyone Audience</Label>
+            <Select
+              id="scriptPromptVersionEveryone"
+              value={settings.scriptPromptVersionEveryone ?? "v1"}
+              onChange={(e) =>
+                updateField("scriptPromptVersionEveryone", e.target.value as ScriptPromptVersion)
+              }
+              options={[
+                { value: "v1", label: SCRIPT_PROMPT_VERSION_LABELS.v1 },
+                { value: "v2", label: SCRIPT_PROMPT_VERSION_LABELS.v2 },
+              ]}
+            />
+          </div>
+        </div>
+
+        {/* Preview of selected prompts */}
+        <div className="space-y-4 pt-4">
+          <div className="space-y-2">
+            <Label className="text-zinc-300">
+              Kids Script Prompt Preview ({SCRIPT_PROMPT_VERSION_LABELS[settings.scriptPromptVersionKids ?? "v1"]})
+            </Label>
+            <Textarea
+              value={getScriptPromptTemplate("forKids", settings.scriptPromptVersionKids ?? "v1")}
+              readOnly
+              rows={8}
+              className="font-mono text-xs bg-zinc-900/50 text-zinc-400 cursor-default"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-zinc-300">
+              Everyone Script Prompt Preview ({SCRIPT_PROMPT_VERSION_LABELS[settings.scriptPromptVersionEveryone ?? "v1"]})
+            </Label>
+            <Textarea
+              value={getScriptPromptTemplate("forEveryone", settings.scriptPromptVersionEveryone ?? "v1")}
+              readOnly
+              rows={8}
+              className="font-mono text-xs bg-zinc-900/50 text-zinc-400 cursor-default"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Other Prompts */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold text-white">Other Prompt Templates</h3>
         <PromptAccordion
           prompts={[
             {
@@ -174,13 +246,6 @@ export function ScriptAudioSettings() {
               description: "Generate quiz questions and answers",
               value: settings.promptQuizzes,
               onChange: (value) => updateField("promptQuizzes", value),
-            },
-            {
-              id: "script",
-              title: "Script Generation",
-              description: "Main video script creation",
-              value: settings.promptScript,
-              onChange: (value) => updateField("promptScript", value),
             },
             {
               id: "scriptQA",

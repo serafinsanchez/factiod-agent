@@ -7,6 +7,7 @@ import type {
   GlobalSettings,
 } from "./types";
 import { STEP_CONFIGS } from "@/lib/agent/steps";
+import { DEFAULT_SCRIPT_PROMPT_VERSION } from "@/prompts/script-variants";
 
 /**
  * Extract prompt templates from step configs
@@ -38,6 +39,10 @@ export const DEFAULT_SCRIPT_AUDIO_SETTINGS: ScriptAudioSettings = {
   promptScript: getPromptByStepId("script"),
   promptScriptQA: getPromptByStepId("scriptQA"),
   promptNarrationAudioTags: getPromptByStepId("narrationAudioTags"),
+  
+  // Script prompt version selection (v1 vs v2 for A/B testing)
+  scriptPromptVersionKids: DEFAULT_SCRIPT_PROMPT_VERSION,
+  scriptPromptVersionEveryone: DEFAULT_SCRIPT_PROMPT_VERSION,
 };
 
 /**

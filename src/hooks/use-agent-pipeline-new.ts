@@ -792,11 +792,18 @@ export function useAgentPipeline() {
       const hasManualOverride =
         typeof manualPromptOverride === "string" && manualPromptOverride.trim().length > 0;
 
-      const promptTemplateOverride = hasManualOverride
-        ? manualPromptOverride
-        : audienceMode === "forEveryone" && AUDIENCE_OVERRIDDEN_STEP_IDS.has(stepId)
-          ? getPromptByAudience(stepId, audienceMode)
-          : undefined;
+      // For the script step, don't send an override so the server can apply
+      // the v1/v2 selection from Settings. For other audience-overridden steps,
+      // continue to send the audience-specific prompt.
+      let promptTemplateOverride: string | undefined;
+      if (hasManualOverride && stepId !== "script") {
+        // Manual override takes precedence (except for script step which uses Settings v1/v2)
+        promptTemplateOverride = manualPromptOverride;
+      } else if (stepId !== "script" && audienceMode === "forEveryone" && AUDIENCE_OVERRIDDEN_STEP_IDS.has(stepId)) {
+        // For non-script steps in forEveryone mode, send audience-specific prompt
+        promptTemplateOverride = getPromptByAudience(stepId, audienceMode);
+      }
+      // For the script step, promptTemplateOverride stays undefined so server applies Settings v1/v2
 
       // Handle shell steps
       if (stepId === "narrationTimestamps") {
@@ -1159,29 +1166,25 @@ export function useAgentPipeline() {
 
     const audienceMode: AudienceMode = pipeline.audienceMode ?? "forKids";
 
-    const baseOverrides: Partial<Record<StepId, string>> = {};
-    if (audienceMode === "forEveryone") {
-      for (const stepId of RUN_ALL_OVERRIDE_STEP_IDS) {
-        if (!AUDIENCE_OVERRIDDEN_STEP_IDS.has(stepId)) {
-          continue;
-        }
-        baseOverrides[stepId] = getPromptByAudience(stepId, audienceMode);
-      }
-    }
-
+    // Only send manual prompt overrides that the user has explicitly edited.
+    // The server now handles audience-specific prompts and script v1/v2 selection.
+    // Exclude the 'script' step from manual overrides since the server applies v1/v2 from Settings.
     const manualOverrideEntries = Object.entries(promptOverrides)
       .filter(([stepId, value]) => {
         if (!RUN_ALL_OVERRIDE_STEP_IDS.has(stepId as StepId)) {
+          return false;
+        }
+        // Don't override the script step - let the server apply the v1/v2 selection from Settings
+        if (stepId === "script") {
           return false;
         }
         return typeof value === "string" && value.trim().length > 0;
       })
       .map(([stepId, value]) => [stepId as StepId, value as string] as const);
 
-    const manualOverrides = Object.fromEntries(manualOverrideEntries) as Partial<Record<StepId, string>>;
-
-    const mergedOverrides = { ...baseOverrides, ...manualOverrides };
-    const overrides = Object.keys(mergedOverrides).length > 0 ? mergedOverrides : undefined;
+    const overrides = manualOverrideEntries.length > 0
+      ? Object.fromEntries(manualOverrideEntries) as Partial<Record<StepId, string>>
+      : undefined;
 
     setIsRunningAll(true);
 
@@ -1189,6 +1192,7 @@ export function useAgentPipeline() {
       const body: Record<string, unknown> = {
         topic: pipeline.topic,
         model: pipeline.model,
+        audienceMode,
       };
       if (overrides && Object.keys(overrides).length > 0) {
         body.promptTemplateOverrides = overrides;

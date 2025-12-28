@@ -87,7 +87,7 @@ Inputs you receive:
 
 ## Style & Length Rules
 
-* **Target length**: ~8 minutes read aloud (**max ~[DefaultWordCount] words**).
+* **Target length**: ~8-10 minutes read aloud (**max ~[DefaultWordCount] words**).
 * Keep the script conversational, engaging, and easy to follow.
 * Vary sentence length to support natural ElevenLabs voice pacing.
 * Avoid repetition—once a concept is explained, don’t restate it unless in the recap.
