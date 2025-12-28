@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { cookies } from "next/headers";
+import Link from "next/link";
+import { Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -37,7 +39,20 @@ export default async function RootLayout({
       >
         <div className="min-h-screen bg-zinc-950">
           {isAuthenticated && (
-            <header className="flex justify-end border-b border-white/5 bg-zinc-950/80 px-4 py-3">
+            <header className="flex items-center justify-end gap-2 border-b border-white/5 bg-zinc-950/80 px-4 py-3">
+              <Button
+                asChild
+                size="icon-sm"
+                variant="outline"
+                className="rounded-xl border-white/20 bg-white/5 text-white hover:bg-white/10"
+                title="Settings"
+                aria-label="Settings"
+              >
+                <Link href="/settings">
+                  <Settings className="size-4" />
+                </Link>
+              </Button>
+
               <form action="/api/auth/logout" method="POST">
                 <Button
                   type="submit"
