@@ -27,7 +27,7 @@ export const DEFAULT_SCRIPT_AUDIO_SETTINGS: ScriptAudioSettings = {
   defaultWordCount: 1500,
 
   // Audio
-  audioVoice: "", // Will be populated from ELEVENLABS_VOICE_ID env var by the API route if available
+  audioVoice: "dXtC3XhB9GtPusIpNtQx", // Pip the Penguin - default voice
   narrationModel: "eleven_v3",
   stability: 0.5,
   similarityBoost: 0.75,

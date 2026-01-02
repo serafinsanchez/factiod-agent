@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getDefaultSettings } from "@/lib/settings/defaults";
-import type { ScriptAudioSettings } from "@/lib/settings/types";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -34,22 +33,9 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (error) {
-      // Not found is OK - return defaults merged with env vars
+      // Not found is OK - return defaults
       if (error.code === "PGRST116") {
         const defaults = getDefaultSettings(settingsKey);
-        
-        // Merge environment variable defaults for scriptAudio settings
-        if (settingsKey === "scriptAudio" && typeof defaults === "object" && defaults !== null) {
-          const envVoiceId = process.env.ELEVENLABS_VOICE_ID;
-          if (envVoiceId) {
-            const mergedDefaults = {
-              ...(defaults as unknown as ScriptAudioSettings),
-              audioVoice: envVoiceId,
-            };
-            return NextResponse.json({ data: mergedDefaults });
-          }
-        }
-        
         return NextResponse.json({ data: defaults });
       }
       console.error("Error fetching settings:", error);
@@ -66,19 +52,6 @@ export async function GET(request: NextRequest) {
       isPlainObject(defaults) && isPlainObject(saved)
         ? { ...defaults, ...saved }
         : saved ?? defaults;
-
-    // Merge environment variable defaults for scriptAudio settings
-    if (settingsKey === "scriptAudio" && isPlainObject(merged)) {
-      const envVoiceId = process.env.ELEVENLABS_VOICE_ID;
-      if (envVoiceId && !String((merged as unknown as ScriptAudioSettings).audioVoice ?? "").trim()) {
-        return NextResponse.json({
-          data: {
-            ...(merged as unknown as ScriptAudioSettings),
-            audioVoice: envVoiceId,
-          },
-        });
-      }
-    }
 
     return NextResponse.json({ data: merged });
   } catch (error) {
