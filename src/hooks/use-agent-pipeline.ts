@@ -65,6 +65,7 @@ import { useThumbnailGeneration } from "./pipeline/use-thumbnail-generation";
 import { useSceneImages } from "./pipeline/use-scene-images";
 import { useSceneVideos } from "./pipeline/use-scene-videos";
 import { useVideoAssembly } from "./pipeline/use-video-assembly";
+import { useRunAllPipeline } from "./pipeline/use-run-all-pipeline";
 import { useSettings } from "./use-settings";
 import { getDefaultSettings } from "@/lib/settings/defaults";
 import type { ScriptAudioSettings as ScriptAudioSettingsType } from "@/lib/settings/types";
@@ -1388,6 +1389,27 @@ export function useAgentPipeline() {
   }, []);
 
   // ============================================
+  // Run All Pipeline (Full Pipeline with Resume)
+  // ============================================
+  const runAllPipeline = useRunAllPipeline({
+    pipeline,
+    pipelineRef,
+    setPipeline,
+    runServerBatch: runAll,
+    runStep,
+    stepExecutors: {
+      runNarrationAudioStep: narrationAudio.runNarrationAudioStep,
+      runNarrationTimestampsStep,
+      generateCharacterReferenceImage,
+      generateSceneImages: sceneImages.generateSceneImages,
+      generateSceneVideos: sceneVideos.generateSceneVideos,
+      assembleVideo: videoAssembly.assembleVideo,
+      generateThumbnail: thumbnailGen.generateThumbnail,
+    },
+    queueAutoSave: autoSave.queueAutoSave,
+  });
+
+  // ============================================
   // Return Object
   // ============================================
   return {
@@ -1403,6 +1425,12 @@ export function useAgentPipeline() {
       isDeletingProjectId: projectHistory.isDeletingProjectId,
       deleteError: projectHistory.deleteError,
       isRunningAll,
+      // Run All Pipeline state
+      runAllState: runAllPipeline.runAllState,
+      isRunningFullPipeline: runAllPipeline.isRunning,
+      canResumeFullPipeline: runAllPipeline.canResume,
+      fullPipelineCompleted: runAllPipeline.hasCompleted,
+      fullPipelineFailed: runAllPipeline.hasFailed,
       isGeneratingScriptAudio: narrationAudio.isGeneratingScriptAudio,
       scriptAudioUrl: narrationAudio.scriptAudioUrl,
       scriptAudioError: narrationAudio.scriptAudioError,
@@ -1447,6 +1475,12 @@ export function useAgentPipeline() {
       setPromptOverride,
       runStep,
       runAll,
+      // Full pipeline actions (all steps with resume capability)
+      runFullPipeline: runAllPipeline.startFullPipeline,
+      resumeFullPipeline: runAllPipeline.resumeFromError,
+      cancelFullPipeline: runAllPipeline.cancelPipeline,
+      resetFullPipelineState: runAllPipeline.resetRunAllState,
+      getFullPipelineProgress: runAllPipeline.getProgress,
       newProject: projectHistory.newProject,
       saveProject: projectHistory.saveProject,
       selectProject: projectHistory.selectProject,

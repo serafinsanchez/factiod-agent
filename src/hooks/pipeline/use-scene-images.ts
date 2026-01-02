@@ -5,6 +5,7 @@ import type { PipelineState, SceneAsset, VideoFrameMode } from "@/types/agent";
 import { getOrCreateProjectSlug, getPublicProjectFileUrl } from "@/lib/projects";
 import { slugifyTopic } from "@/lib/slug";
 import { styleRequiresCharacterReference } from "@/prompts/visual-styles";
+import { classifyError } from "@/lib/pipeline/error-classifier";
 import { type ProgressState, ensureStepState } from "./pipeline-types";
 
 type UseSceneImagesOptions = {
@@ -260,7 +261,11 @@ export function useSceneImages({
 
       queueAutoSave();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to generate scene images.";
+      const pipelineError = classifyError(
+        error instanceof Error ? error : String(error),
+        "sceneImages"
+      );
+      const message = `${pipelineError.message}${pipelineError.guidance ? ` ${pipelineError.guidance}` : ""}`;
       setSceneImagesError(message);
       setSceneImagesProgress(null);
       setPipeline((prev) => ({

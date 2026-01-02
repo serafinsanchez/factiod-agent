@@ -13,6 +13,7 @@ import { useSettings } from "@/hooks/use-settings";
 
 import { OutputPreview } from "./OutputPreview";
 import { StepEditor } from "./StepEditor";
+import { RunAllPipelineButton } from "./RunAllPipelineButton";
 import type { UseAgentPipelineReturn } from "@/hooks/use-agent-pipeline";
 import type { StageDefinition, StageId } from "./stage-config";
 import { StyleSelector } from "./StyleSelector";
@@ -206,6 +207,31 @@ export function StageView({
                   This will clear your current outputs for this project.
                 </div>
               )}
+          </div>
+
+          {/* Run All Pipeline Button */}
+          <div className="rounded-3xl border border-zinc-900/70 bg-zinc-950/70 p-5">
+            <div className="space-y-2">
+              <p className="text-[0.6rem] font-semibold uppercase tracking-[0.35em] text-zinc-500">
+                Full Pipeline
+              </p>
+              <p className="text-sm text-zinc-400">
+                Run all steps from script generation through final video assembly with one click.
+              </p>
+            </div>
+            <div className="mt-4">
+              <RunAllPipelineButton
+                runAllState={state.runAllState}
+                isRunning={state.isRunningFullPipeline}
+                canResume={state.canResumeFullPipeline}
+                hasCompleted={state.fullPipelineCompleted}
+                hasFailed={state.fullPipelineFailed}
+                onStart={actions.runFullPipeline}
+                onResume={actions.resumeFullPipeline}
+                onCancel={actions.cancelFullPipeline}
+                getProgress={actions.getFullPipelineProgress}
+              />
+            </div>
           </div>
 
           <div className="space-y-6">

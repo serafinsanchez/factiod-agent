@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import type { PipelineState, VideoFrameMode } from "@/types/agent";
 import { getFramesForDuration } from "@/lib/video/fal-client";
+import { classifyError } from "@/lib/pipeline/error-classifier";
 import { type ProgressState, ensureStepState } from "./pipeline-types";
 
 type UseSceneVideosOptions = {
@@ -333,7 +334,11 @@ export function useSceneVideos({
 
       queueAutoSave();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to generate scene videos.";
+      const pipelineError = classifyError(
+        error instanceof Error ? error : String(error),
+        "sceneVideos"
+      );
+      const message = `${pipelineError.message}${pipelineError.guidance ? ` ${pipelineError.guidance}` : ""}`;
       setSceneVideosError(message);
       setPipeline((prev) => ({
         ...prev,

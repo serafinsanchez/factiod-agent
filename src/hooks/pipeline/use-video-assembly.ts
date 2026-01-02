@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import type { PipelineState } from "@/types/agent";
 import { getOrCreateProjectSlug, getServerAudioUrl } from "@/lib/projects";
+import { classifyError } from "@/lib/pipeline/error-classifier";
 import { ensureStepState } from "./pipeline-types";
 
 type UseVideoAssemblyOptions = {
@@ -251,7 +252,11 @@ export function useVideoAssembly({
 
       queueAutoSave();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to assemble video.";
+      const pipelineError = classifyError(
+        error instanceof Error ? error : String(error),
+        "videoAssembly"
+      );
+      const message = `${pipelineError.message}${pipelineError.guidance ? ` ${pipelineError.guidance}` : ""}`;
       setVideoAssemblyError(message);
       setPipeline((prev) => ({
         ...prev,

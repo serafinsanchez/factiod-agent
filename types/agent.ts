@@ -98,6 +98,63 @@ export interface StepRunState {
   metrics?: StepRunMetrics;
 }
 
+// ============================================
+// Run All Pipeline Types
+// ============================================
+
+/**
+ * Error codes for categorizing pipeline failures.
+ * Used to provide actionable guidance and determine retry eligibility.
+ */
+export type PipelineErrorCode =
+  | 'NETWORK_TIMEOUT'
+  | 'RATE_LIMIT'
+  | 'INVALID_LLM_OUTPUT'
+  | 'MEDIA_GENERATION_FAILED'
+  | 'STORAGE_UPLOAD_FAILED'
+  | 'VALIDATION_FAILED'
+  | 'CANCELLED'
+  | 'UNKNOWN';
+
+/**
+ * Extended error information with actionable guidance for the user.
+ */
+export interface PipelineError {
+  code: PipelineErrorCode;
+  message: string;
+  /** User-friendly guidance on how to recover from this error */
+  guidance: string;
+  /** Whether this error can be retried (e.g., network timeout vs validation error) */
+  retryable: boolean;
+  /** The step that failed, if applicable */
+  stepId?: StepId;
+}
+
+/**
+ * State tracking for "Run All" pipeline execution.
+ * Enables progress display and resume-from-failure capability.
+ */
+export interface RunAllState {
+  /** Current execution status */
+  status: 'idle' | 'running' | 'completed' | 'error' | 'cancelled';
+  /** Step currently being executed (null when idle/completed) */
+  currentStepId: StepId | null;
+  /** Index of current step in execution order (0-based) */
+  currentStepIndex: number;
+  /** Total number of steps to execute */
+  totalSteps: number;
+  /** Steps that have completed successfully in this run */
+  completedStepIds: StepId[];
+  /** The step that failed, if status is 'error' */
+  failedStepId: StepId | null;
+  /** Detailed error information if failed */
+  error: PipelineError | null;
+  /** Timestamp when run started (ms since epoch) */
+  startedAt: number | null;
+  /** Whether this is a resume from a previous failed run */
+  isResume: boolean;
+}
+
 export interface PipelineState {
   topic: string;
   /** Optional creator label for display in project lists */
@@ -163,6 +220,12 @@ export interface PipelineState {
    * run the entire scene list.
    */
   scenePreviewLimit?: number | null;
+
+  /**
+   * Run All pipeline execution state.
+   * Tracks progress through the full pipeline for resume capability and progress display.
+   */
+  runAllState?: RunAllState;
 }
 
 export interface HistoryProject {

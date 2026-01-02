@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import type { PipelineState, StepRunMetrics } from "@/types/agent";
 import { getOrCreateProjectSlug, buildProjectAudioPath } from "@/lib/projects";
+import { classifyError } from "@/lib/pipeline/error-classifier";
 import {
   DEFAULT_NARRATION_MODEL,
   TTS_COST_PER_THOUSAND_CHARS_USD,
@@ -170,8 +171,11 @@ export function useNarrationAudio({
         });
         queueAutoSave();
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Failed to generate audio. Please try again.";
+        const pipelineError = classifyError(
+          error instanceof Error ? error : String(error),
+          "narrationAudio"
+        );
+        const message = `${pipelineError.message}${pipelineError.guidance ? ` ${pipelineError.guidance}` : ""}`;
         setScriptAudioError(message);
         setPipeline((prev) => ({
           ...prev,
