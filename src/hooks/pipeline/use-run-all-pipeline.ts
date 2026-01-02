@@ -210,6 +210,7 @@ export function useRunAllPipeline(options: UseRunAllPipelineOptions) {
 
       const completedSteps: StepId[] = [];
       const skippedSteps: StepId[] = [];
+      let currentStep: StepId | null = null;
 
       try {
         // Pre-flight validation
@@ -331,6 +332,14 @@ export function useRunAllPipeline(options: UseRunAllPipelineOptions) {
             continue;
           }
 
+          // Update current step BEFORE validation so error handler knows which step failed
+          currentStep = stepId;
+          updateRunAllState({
+            currentStepId: stepId,
+            currentStepIndex: stepIndex,
+            completedStepIds: [...completedSteps],
+          });
+
           // Validate step dependencies
           const stepValidation = validateBeforeStep(pipelineRef.current, stepId);
           if (!stepValidation.valid) {
@@ -342,13 +351,6 @@ export function useRunAllPipeline(options: UseRunAllPipelineOptions) {
               );
             }
           }
-
-          // Update current step
-          updateRunAllState({
-            currentStepId: stepId,
-            currentStepIndex: stepIndex,
-            completedStepIds: [...completedSteps],
-          });
 
           // Execute the step
           await executeClientStep(stepId);
@@ -381,7 +383,6 @@ export function useRunAllPipeline(options: UseRunAllPipelineOptions) {
           completedStepIds: completedSteps,
         });
       } catch (error) {
-        const currentStep = runAllState.currentStepId;
         const pipelineError = classifyError(
           error instanceof Error ? error : String(error),
           currentStep ?? undefined
@@ -407,7 +408,6 @@ export function useRunAllPipeline(options: UseRunAllPipelineOptions) {
       executeClientStep,
       checkStepFailed,
       queueAutoSave,
-      runAllState.currentStepId,
     ]
   );
 
