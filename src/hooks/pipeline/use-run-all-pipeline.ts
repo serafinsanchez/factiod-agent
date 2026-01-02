@@ -30,8 +30,8 @@ export const FULL_PIPELINE_STEPS: StepId[] = [
   "narrationAudio",
   "thumbnailGenerate",
   // Phase 3: Video Pipeline (client-side)
-  "narrationTimestamps",
   "productionScript",
+  "narrationTimestamps",
   "characterReferenceImage",
   "sceneImagePrompts",
   "sceneImages",
