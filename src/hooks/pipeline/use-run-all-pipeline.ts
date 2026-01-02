@@ -234,6 +234,22 @@ export function useRunAllPipeline(options: UseRunAllPipelineOptions) {
           }
         }
 
+        // Clear stale step errors when starting fresh (not resuming)
+        if (!resume) {
+          const clearedSteps = Object.fromEntries(
+            Object.entries(pipelineRef.current.steps).map(([stepId, step]) => [
+              stepId,
+              step?.status === "error"
+                ? { ...step, status: "idle" as const, errorMessage: undefined }
+                : step,
+            ])
+          ) as PipelineState["steps"];
+
+          // Update both ref and state synchronously to avoid race conditions
+          pipelineRef.current = { ...pipelineRef.current, steps: clearedSteps };
+          setPipeline((prev) => ({ ...prev, steps: clearedSteps }));
+        }
+
         // Initialize run state
         updateRunAllState({
           status: "running",
