@@ -13,8 +13,9 @@ import { runPreflightValidation, validateBeforeStep } from "@/lib/pipeline/valid
 import { isClientShellStep } from "@/lib/agent/steps";
 
 /**
- * Full pipeline step order for "Run All" including all media generation steps.
- * This extends the server-side batch to include all client-side steps.
+ * Full pipeline step order for "Run All".
+ * Includes Script + Audio and Publishing steps only.
+ * Imagery and Video Gen steps are excluded (run manually by video team).
  */
 export const FULL_PIPELINE_STEPS: StepId[] = [
   // Phase 1: Script Generation (server-side batch via /api/agent/run-all)
@@ -26,18 +27,9 @@ export const FULL_PIPELINE_STEPS: StepId[] = [
   "narrationAudioTags",
   "titleDescription",
   "thumbnail",
-  // Phase 2: Audio Generation (client-side)
+  // Phase 2: Audio & Thumbnail Generation (client-side)
   "narrationAudio",
   "thumbnailGenerate",
-  // Phase 3: Video Pipeline (client-side)
-  "productionScript",
-  "narrationTimestamps",
-  "characterReferenceImage",
-  "sceneImagePrompts",
-  "sceneImages",
-  "sceneVideoPrompts",
-  "sceneVideos",
-  "videoAssembly",
 ];
 
 /**
